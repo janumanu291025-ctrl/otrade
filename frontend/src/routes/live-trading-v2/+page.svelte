@@ -376,11 +376,10 @@
 	
 	async function loadMarketStatus() {
 		try {
-			const response = await fetch('http://localhost:8000/api/unified-market-hours/status');
+			const response = await fetch('http://localhost:8000/api/market-time/status');
 			const result = await response.json();
-			if (result.status === 'success') {
-				marketStatus = result.data;
-			}
+			// Updated to handle the correct response format from market-time API
+			marketStatus = result;
 		} catch (err) {
 			console.error('Error loading market status:', err);
 		}

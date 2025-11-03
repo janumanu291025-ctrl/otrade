@@ -289,7 +289,7 @@
 		marketHoursError = null;
 		
 		try {
-			const response = await axios.get('http://localhost:8000/api/market-hours');
+			const response = await axios.get('http://localhost:8000/api/market-time/config');
 			marketHours = response.data;
 		} catch (err) {
 			console.error('Error loading market hours:', err);
@@ -305,7 +305,7 @@
 		marketHoursSuccess = null;
 		
 		try {
-			const response = await axios.put('http://localhost:8000/api/market-hours', marketHours);
+			const response = await axios.put('http://localhost:8000/api/market-time/config', marketHours);
 			marketHoursSuccess = 'Market hours configuration saved successfully!';
 			setTimeout(() => marketHoursSuccess = null, 3000);
 		} catch (err) {
@@ -332,8 +332,8 @@
 		
 		try {
 			const url = selectedYear 
-				? `http://localhost:8000/api/market-hours/holidays?year=${selectedYear}`
-				: 'http://localhost:8000/api/market-hours/holidays';
+				? `http://localhost:8000/api/market-time/holidays?year=${selectedYear}`
+				: 'http://localhost:8000/api/market-time/holidays';
 			const response = await axios.get(url);
 			holidays = response.data;
 		} catch (err) {
@@ -355,7 +355,7 @@
 		holidaysSuccess = null;
 		
 		try {
-			await axios.post('http://localhost:8000/api/market-hours/holidays', newHoliday);
+			await axios.post('http://localhost:8000/api/market-time/holidays', newHoliday);
 			holidaysSuccess = 'Holiday added successfully!';
 			setTimeout(() => holidaysSuccess = null, 3000);
 			
@@ -383,7 +383,7 @@
 		holidaysSuccess = null;
 		
 		try {
-			await axios.delete(`http://localhost:8000/api/market-hours/holidays/${date}`);
+			await axios.delete(`http://localhost:8000/api/market-time/holidays/${date}`);
 			holidaysSuccess = 'Holiday deleted successfully!';
 			setTimeout(() => holidaysSuccess = null, 3000);
 			

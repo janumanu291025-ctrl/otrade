@@ -52,9 +52,12 @@ export const configAPI = {
 
 // Market Hours API
 export const marketHoursAPI = {
-    getConfig: () => api.get('/market-hours/config'),
-    updateConfig: (data) => api.put('/market-hours/config', data),
-    getStatus: () => api.get('/market-hours/status')
+    getConfig: () => api.get('/market-time/config'),
+    updateConfig: (data) => api.put('/market-time/config', data),
+    getStatus: () => api.get('/market-time/status'),
+    getHolidays: (year = null) => api.get('/market-time/holidays', { params: year ? { year } : {} }),
+    addHoliday: (data) => api.post('/market-time/holidays', data),
+    removeHoliday: (date) => api.delete(`/market-time/holidays/${date}`)
 };
 
 // Paper Trading API
