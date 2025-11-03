@@ -1,0 +1,41 @@
+# FastAPI and Server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+websockets==12.0
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+
+# Broker APIs
+kiteconnect==4.2.0
+requests==2.31.0
+
+# Data Processing
+pandas==2.1.3
+numpy==1.26.2
+numba==0.59.0  # Updated for Python 3.12 compatibility
+
+# Technical Analysis
+# ta-lib==0.4.28  # Removed - requires system libraries, not essential for core functionality
+python-dateutil==2.8.2
+
+# Environment and Config
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Utilities
+aiofiles==23.2.1
+python-json-logger==2.0.7
+pyperclip==1.8.2  # For clipboard operations in paper trading GUI
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.1

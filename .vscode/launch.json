@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Run Full Stack (FastAPI + Firefox)",
+      "configurations": ["FastAPI Server", "Frontend (Firefox)"]
+    }
+  ],
+  "configurations": [
+    {
+      "name": "FastAPI Server",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["backend.main:app", "--reload", "--port", "8000"],
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Frontend (Firefox)",
+      "type": "firefox",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend",
+      "profileDir": "/home/v77260/.mozilla/firefox/vscode-debug",
+      "reAttach": true
+    }
+  ]
+}
