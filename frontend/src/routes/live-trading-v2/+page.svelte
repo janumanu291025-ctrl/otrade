@@ -1146,8 +1146,8 @@ async function closeBrokerPosition(position) {
 	
 	function formatLTP(value) {
 		return new Intl.NumberFormat('en-IN', {
-			minimumFractionDigits: 2,
-			maximumFractionDigits: 2
+			minimumFractionDigits: 0,
+			maximumFractionDigits: 0
 		}).format(value || 0);
 	}
 	
@@ -2024,141 +2024,80 @@ async function closeBrokerPosition(position) {
 					</div>
 
 					<!-- Trend Indicators -->
-					<div class="space-y-4">
-						<!-- Minor Trend -->
-						{#if engineStatus.minor_trend}
-							<div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-								<div class="flex justify-between items-center mb-3">
-									<div class="flex items-center gap-2">
-										<span class="text-sm font-semibold text-gray-700">Minor ({engineStatus.minor_timeframe})</span>
-										<span class="text-sm font-bold {engineStatus.minor_trend.toLowerCase().includes('up') ? 'text-green-600' : 'text-red-600'}">
-											{engineStatus.minor_trend.toLowerCase().includes('up') ? '▲' : '▼'}
-										</span>
-									</div>
-								</div>
-
-								<!-- Position Progress Bar -->
-								{#if engineStatus.minor_lbb && engineStatus.minor_ubb && engineStatus.minor_ma20}
-									{@const minorRange = engineStatus.minor_ubb - engineStatus.minor_lbb}
-									{@const ma7Position = engineStatus.minor_ma7 ? ((engineStatus.minor_ma7 - engineStatus.minor_lbb) / minorRange) * 100 : 50}
-									{@const ltpPosition = ((engineStatus.nifty_ltp - engineStatus.minor_lbb) / minorRange) * 100}
-									<div class="space-y-1">
-										<!-- LTP value above bar -->
-										<div class="relative w-full h-4">
-											<div class="absolute text-xs font-bold text-black transform -translate-x-1/2" style="left: {Math.max(5, Math.min(95, ltpPosition))}%">
-												{formatLTP(engineStatus.nifty_ltp)}
-											</div>
-										</div>
-										<!-- Progress bar -->
-										<div class="relative w-full bg-gray-300 rounded-full h-2">
-											<!-- LBB marker (left edge) -->
-											<div class="absolute top-0 bottom-0 w-1 bg-blue-600 rounded-l-full" style="left: 0%"></div>
-											<!-- UBB marker (right edge) -->
-											<div class="absolute top-0 bottom-0 w-1 bg-blue-600 rounded-r-full" style="right: 0%"></div>
+					<div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+						<div class="flex justify-start items-start gap-8">
+							<!-- Major Trend Column -->
+							<div class="flex flex-col items-center space-y-2">
+								<!-- Major Trend Progress Bar -->
+								{#if engineStatus.major_trend && engineStatus.major_lbb && engineStatus.major_ubb && engineStatus.major_ma20}
+									{@const majorRange = engineStatus.major_ubb - engineStatus.major_lbb}
+									{@const ma7Position = engineStatus.major_ma7 ? ((engineStatus.major_ma7 - engineStatus.major_lbb) / majorRange) * 100 : 50}
+									{@const ltpPosition = ((engineStatus.nifty_ltp - engineStatus.major_lbb) / majorRange) * 100}
+									<div class="flex flex-col items-center space-y-1">
+										<!-- UBB value above bar -->
+										<div class="text-xs font-medium {(engineStatus.major_ubb - engineStatus.nifty_ltp) > 0 ? 'text-green-600' : 'text-red-600'}">{formatLTP(engineStatus.major_ubb - engineStatus.nifty_ltp)}</div>
+										<!-- Vertical progress bar -->
+										<div class="relative bg-gray-300 rounded-full w-6 h-64">
 											<!-- 20 MA marker (center) -->
-											<div class="absolute top-0 bottom-0 w-0.5 bg-red-600 z-10" style="left: 50%"></div>
+											<div class="absolute left-0 right-0 top-1/2 transform -translate-y-1/2 h-0.5 bg-red-600 z-10"></div>
 											<!-- 7 MA marker -->
-											{#if engineStatus.minor_ma7}
-												<div class="absolute top-0 bottom-0 w-0.5 bg-green-600 z-10" style="left: {Math.max(0, Math.min(100, ma7Position))}%"></div>
+											{#if engineStatus.major_ma7}
+												<div class="absolute left-0 right-0 h-0.5 bg-blue-600 z-10" style="top: {100 - (Math.max(0, Math.min(100, ma7Position)))}%"></div>
 											{/if}
 											<!-- LTP marker -->
-											<div class="absolute top-0 bottom-0 w-0.5 bg-black z-20" style="left: {Math.max(0, Math.min(100, ltpPosition))}%"></div>
+											<div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full z-20 {engineStatus.nifty_change > 0 ? 'bg-green-700' : engineStatus.nifty_change < 0 ? 'bg-red-700' : 'bg-gray-500'}" style="top: {100 - (Math.max(0, Math.min(100, ltpPosition)))}%"></div>
 										</div>
-										<!-- Indicator values below bar -->
-										<div class="relative w-full text-xs">
-											<!-- LBB value (left) -->
-											<span class="absolute left-0 text-blue-600 font-medium">{formatLTP(engineStatus.minor_lbb)}</span>
-											<!-- 20MA value (center) -->
-											<span class="absolute left-1/2 transform -translate-x-1/2 text-red-600 font-medium">{formatLTP(engineStatus.minor_ma20)}</span>
-											<!-- UBB value (right) -->
-											<span class="absolute right-0 text-blue-600 font-medium">{formatLTP(engineStatus.minor_ubb)}</span>
-										</div>
+										<!-- LBB value below bar -->
+										<div class="text-xs font-medium {(engineStatus.nifty_ltp - engineStatus.major_lbb) > 0 ? 'text-green-600' : 'text-red-600'}">{formatLTP(engineStatus.nifty_ltp - engineStatus.major_lbb)}</div>
 									</div>
 								{/if}
-							</div>
-						{/if}
-
-						<!-- Major Trend -->
-						{#if engineStatus.major_trend}
-							<div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-								<div class="flex justify-between items-center mb-3">
+								{#if engineStatus.major_trend}
 									<div class="flex items-center gap-2">
-										<span class="text-sm font-semibold text-gray-700">Major ({engineStatus.major_timeframe})</span>
+										<span class="text-sm font-semibold text-gray-700">{engineStatus.major_timeframe}</span>
 										<span class="text-sm font-bold {engineStatus.major_trend.toLowerCase().includes('up') ? 'text-green-600' : 'text-red-600'}">
 											{engineStatus.major_trend.toLowerCase().includes('up') ? '▲' : '▼'}
 										</span>
 									</div>
-								</div>
+								{/if}
+							</div>
 
-								<!-- Position Progress Bar -->
-								{#if engineStatus.major_lbb && engineStatus.major_ubb && engineStatus.major_ma20}
-									{@const majorRange = engineStatus.major_ubb - engineStatus.major_lbb}
-									{@const ma7Position = engineStatus.major_ma7 ? ((engineStatus.major_ma7 - engineStatus.major_lbb) / majorRange) * 100 : 50}
-									{@const ltpPosition = ((engineStatus.nifty_ltp - engineStatus.major_lbb) / majorRange) * 100}
-									<div class="space-y-1">
-										<!-- LTP value above bar -->
-										<div class="relative w-full h-4">
-											<div class="absolute text-xs font-bold text-black transform -translate-x-1/2" style="left: {Math.max(5, Math.min(95, ltpPosition))}%">
-												{formatLTP(engineStatus.nifty_ltp)}
-											</div>
-										</div>
-										<!-- Progress bar -->
-										<div class="relative w-full bg-gray-300 rounded-full h-2">
-											<!-- LBB marker (left edge) -->
-											<div class="absolute top-0 bottom-0 w-1 bg-blue-600 rounded-l-full" style="left: 0%"></div>
-											<!-- UBB marker (right edge) -->
-											<div class="absolute top-0 bottom-0 w-1 bg-blue-600 rounded-r-full" style="right: 0%"></div>
+							<!-- Minor Trend Column -->
+							<div class="flex flex-col items-center space-y-2">
+								<!-- Minor Trend Progress Bar -->
+								{#if engineStatus.minor_trend && engineStatus.minor_lbb && engineStatus.minor_ubb && engineStatus.minor_ma20}
+									{@const minorRange = engineStatus.minor_ubb - engineStatus.minor_lbb}
+									{@const ma7Position = engineStatus.minor_ma7 ? ((engineStatus.minor_ma7 - engineStatus.minor_lbb) / minorRange) * 100 : 50}
+									{@const ltpPosition = ((engineStatus.nifty_ltp - engineStatus.minor_lbb) / minorRange) * 100}
+									<div class="flex flex-col items-center space-y-1">
+										<!-- UBB value above bar -->
+										<div class="text-xs font-medium {(engineStatus.minor_ubb - engineStatus.nifty_ltp) > 0 ? 'text-green-600' : 'text-red-600'}">{formatLTP(engineStatus.minor_ubb - engineStatus.nifty_ltp)}</div>
+										<!-- Vertical progress bar -->
+										<div class="relative bg-gray-300 rounded-full w-6 h-64">
 											<!-- 20 MA marker (center) -->
-											<div class="absolute top-0 bottom-0 w-0.5 bg-red-600 z-10" style="left: 50%"></div>
+											<div class="absolute left-0 right-0 top-1/2 transform -translate-y-1/2 h-0.5 bg-red-600 z-10"></div>
 											<!-- 7 MA marker -->
-											{#if engineStatus.major_ma7}
-												<div class="absolute top-0 bottom-0 w-0.5 bg-green-600 z-10" style="left: {Math.max(0, Math.min(100, ma7Position))}%"></div>
+											{#if engineStatus.minor_ma7}
+												<div class="absolute left-0 right-0 h-0.5 bg-blue-600 z-10" style="top: {100 - (Math.max(0, Math.min(100, ma7Position)))}%"></div>
 											{/if}
 											<!-- LTP marker -->
-											<div class="absolute top-0 bottom-0 w-0.5 bg-black z-20" style="left: {Math.max(0, Math.min(100, ltpPosition))}%"></div>
+											<div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full z-20 {engineStatus.nifty_change > 0 ? 'bg-green-700' : engineStatus.nifty_change < 0 ? 'bg-red-700' : 'bg-gray-500'}" style="top: {100 - (Math.max(0, Math.min(100, ltpPosition)))}%"></div>
 										</div>
-										<!-- Indicator values below bar -->
-										<div class="relative w-full text-xs">
-											<!-- LBB value (left) -->
-											<span class="absolute left-0 text-blue-600 font-medium">{formatLTP(engineStatus.major_lbb)}</span>
-											<!-- 20MA value (center) -->
-											<span class="absolute left-1/2 transform -translate-x-1/2 text-red-600 font-medium">{formatLTP(engineStatus.major_ma20)}</span>
-											<!-- UBB value (right) -->
-											<span class="absolute right-0 text-blue-600 font-medium">{formatLTP(engineStatus.major_ubb)}</span>
-										</div>
+										<!-- LBB value below bar -->
+										<div class="text-xs font-medium {(engineStatus.nifty_ltp - engineStatus.minor_lbb) > 0 ? 'text-green-600' : 'text-red-600'}">{formatLTP(engineStatus.nifty_ltp - engineStatus.minor_lbb)}</div>
+									</div>
+								{/if}
+								{#if engineStatus.minor_trend}
+									<div class="flex items-center gap-2">
+										<span class="text-sm font-semibold text-gray-700">{engineStatus.minor_timeframe}</span>
+										<span class="text-sm font-bold {engineStatus.minor_trend.toLowerCase().includes('up') ? 'text-green-600' : 'text-red-600'}">
+											{engineStatus.minor_trend.toLowerCase().includes('up') ? '▲' : '▼'}
+										</span>
 									</div>
 								{/if}
 							</div>
-						{/if}
+						</div>
 					</div>
 
-					<!-- Key Metrics -->
-					<div class="mt-4 grid grid-cols-2 gap-3">
-						{#if engineStatus.minor_ma7}
-							<div class="bg-blue-50 rounded-lg p-3 text-center border border-blue-200">
-								<div class="text-xs text-blue-600 mb-1">7MA (Minor)</div>
-								<div class="text-sm font-bold text-blue-900">{engineStatus.minor_ma7.toFixed(2)}</div>
-							</div>
-						{/if}
-						{#if engineStatus.major_ma7}
-							<div class="bg-blue-50 rounded-lg p-3 text-center border border-blue-200">
-								<div class="text-xs text-blue-600 mb-1">7MA (Major)</div>
-								<div class="text-sm font-bold text-blue-900">{engineStatus.major_ma7.toFixed(2)}</div>
-							</div>
-						{/if}
-						{#if engineStatus.minor_ma20}
-							<div class="bg-blue-50 rounded-lg p-3 text-center border border-blue-200">
-								<div class="text-xs text-blue-600 mb-1">20MA (Minor)</div>
-								<div class="text-sm font-bold text-blue-900">{engineStatus.minor_ma20.toFixed(2)}</div>
-							</div>
-						{/if}
-						{#if engineStatus.major_ma20}
-							<div class="bg-blue-50 rounded-lg p-3 text-center border border-blue-200">
-								<div class="text-xs text-blue-600 mb-1">20MA (Major)</div>
-								<div class="text-sm font-bold text-blue-900">{engineStatus.major_ma20.toFixed(2)}</div>
-							</div>
-						{/if}
-					</div>
 				{:else}
 					<div class="text-center py-8 text-gray-500">
 						<p class="text-sm">Nifty 50 data not available</p>
