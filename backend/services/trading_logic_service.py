@@ -312,21 +312,21 @@ class TradingLogicService:
         
         return df
     
-    def detect_crossovers_from_candles(self, prev_candle: Dict, curr_candle: Dict, 
+    def detect_crossovers_from_candles(self, prev_candle: Dict, curr_candle: Dict,
                                       indicators: Dict) -> List[Dict]:
         """
-        Detect crossovers from two consecutive candles (for real-time trading)
-        
+        Detect crossovers from two consecutive candles (for backtesting/paper trading)
+
         Args:
             prev_candle: Previous candle dict with keys: close, low, high
             curr_candle: Current candle dict with keys: close, low, high
             indicators: Dict with indicator values: ma7, ma20, lbb, ubb
-        
+
         Returns:
             List of crossover dicts with keys: type, trigger, direction, indicator_value
         """
         crossovers = []
-        
+
         # MA7 crossovers
         if indicators.get('ma7') is not None:
             if prev_candle['close'] >= indicators['ma7'] and curr_candle['low'] < indicators['ma7']:
@@ -343,7 +343,7 @@ class TradingLogicService:
                     'direction': 'above',
                     'indicator_value': indicators['ma7']
                 })
-        
+
         # MA20 crossovers
         if indicators.get('ma20') is not None:
             if prev_candle['close'] >= indicators['ma20'] and curr_candle['low'] < indicators['ma20']:
@@ -360,7 +360,7 @@ class TradingLogicService:
                     'direction': 'above',
                     'indicator_value': indicators['ma20']
                 })
-        
+
         # LBB crossovers - only below
         if indicators.get('lbb') is not None:
             if prev_candle['close'] >= indicators['lbb'] and curr_candle['low'] < indicators['lbb']:
@@ -370,7 +370,7 @@ class TradingLogicService:
                     'direction': 'below',
                     'indicator_value': indicators['lbb']
                 })
-        
+
         # UBB crossovers - only above
         if indicators.get('ubb') is not None:
             if prev_candle['close'] <= indicators['ubb'] and curr_candle['high'] > indicators['ubb']:
@@ -380,8 +380,73 @@ class TradingLogicService:
                     'direction': 'above',
                     'indicator_value': indicators['ubb']
                 })
-        
+
         return crossovers
+
+    def detect_ltp_crossovers(self, current_ltp: float, previous_ltp: float,
+                             indicators: Dict) -> List[Dict]:
+        """
+        Detect crossovers based on LTP movement (REAL-TIME TRADING)
+
+        This detects the exact moment when LTP crosses an indicator level,
+        enabling true high-frequency trading with sub-second signal generation.
+
+        Args:
+            current_ltp: Current live LTP
+            previous_ltp: Previous LTP value
+            indicators: Dict with current indicator values: ma7, ma20, lbb, ubb
+
+        Returns:
+            List of crossover dicts with keys: trigger, direction, indicator_value, crossed_at_ltp
+        """
+        crossovers = []
+
+        # Skip if LTP hasn't changed or we don't have previous data
+        if not previous_ltp or current_ltp == previous_ltp:
+            return crossovers
+
+        # Check each indicator for crossover
+        indicator_map = {
+            'ma7': '7ma',
+            'ma20': '20ma',
+            'lbb': 'lbb',
+            'ubb': 'ubb'
+        }
+
+        for indicator_name, trigger in indicator_map.items():
+            indicator_value = indicators.get(indicator_name)
+            if indicator_value is None or np.isnan(indicator_value):
+                continue
+
+            # Detect crossover: LTP crossed from one side to other side of indicator
+            if self._has_crossed_indicator(previous_ltp, current_ltp, indicator_value):
+                direction = 'below' if current_ltp < indicator_value else 'above'
+
+                crossovers.append({
+                    'trigger': trigger,
+                    'direction': direction,
+                    'indicator_value': float(indicator_value),
+                    'crossed_at_ltp': current_ltp,
+                    'timestamp': datetime.now()
+                })
+
+        return crossovers
+
+    def _has_crossed_indicator(self, prev_ltp: float, curr_ltp: float, indicator_value: float) -> bool:
+        """
+        Check if LTP crossed the indicator between previous and current update
+
+        Args:
+            prev_ltp: Previous LTP
+            curr_ltp: Current LTP
+            indicator_value: Indicator level
+
+        Returns:
+            True if crossover occurred
+        """
+        # LTP crossed from above to below indicator, or below to above
+        return ((prev_ltp >= indicator_value and curr_ltp < indicator_value) or
+                (prev_ltp <= indicator_value and curr_ltp > indicator_value))
     
     # ===== TRADE DECISION MATRIX (CORE STRATEGY LOGIC) =====
     

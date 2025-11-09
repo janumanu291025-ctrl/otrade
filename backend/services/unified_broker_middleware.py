@@ -5,7 +5,7 @@ Unified Broker Data Middleware
 This middleware acts as a central hub for all broker data interactions, managing:
 
 A. Market Data Feed (LTP & Order Status):
-   - During market hours (9:00 AM - 3:30 PM): WebSocket/Webhook active
+   - During exchange-defined market hours: WebSocket/Webhook active
    - LTP updates via webhook in real-time
    - Order status updates via webhook postback
    - Automatic fallback to API polling if webhook doesn't return data for 10 seconds
@@ -48,7 +48,7 @@ IST = pytz.timezone('Asia/Kolkata')
 class WebhookConnectionManager:
     """
     Manages WebSocket/Webhook connections for real-time market data
-    Active only during market hours (9:00 AM - 3:30 PM)
+    Active only during exchange-defined market hours (typically 9:15 AM - 3:30 PM IST)
     """
     
     def __init__(self, broker: BaseBroker, market_time_service: MarketCalendar):
@@ -148,16 +148,28 @@ class WebhookConnectionManager:
     def _handle_ticks(self, ticks: List[Dict]):
         """Handle incoming tick data"""
         self.last_data_received = datetime.now(IST)
-        
+
+        # Process LTP updates asynchronously
+        asyncio.create_task(self._process_ticks_async(ticks))
+
+    async def _process_ticks_async(self, ticks: List[Dict]):
+        """Process tick data asynchronously"""
         # Process LTP updates
         for tick in ticks:
             instrument_token = tick.get('instrument_token')
             last_price = tick.get('last_price', 0.0)
-            
+
             # Notify all LTP callbacks
             for callback in self.ltp_callbacks:
                 try:
-                    callback(instrument_token, last_price, tick)
+                    # Check if callback is async
+                    import inspect
+                    if inspect.iscoroutinefunction(callback):
+                        # Async callback
+                        await callback(instrument_token, last_price, tick)
+                    else:
+                        # Sync callback
+                        callback(instrument_token, last_price, tick)
                 except Exception as e:
                     logger.error(f"Error in LTP callback: {e}")
     
@@ -543,21 +555,37 @@ class UnifiedBrokerMiddleware:
         # LTP fallback from API polling
         self.polling_scheduler.register_ltp_fallback_callback(self._handle_fallback_ltp)
     
-    def _handle_webhook_ltp(self, instrument_token: int, ltp: float, tick_data: Dict):
+    async def _handle_webhook_ltp(self, instrument_token: int, ltp: float, tick_data: Dict):
         """Handle LTP update from webhook"""
         # Notify all registered callbacks
         for callback in self.ltp_update_callbacks:
             try:
-                callback(str(instrument_token), ltp, tick_data, source="webhook")
+                # Check if callback is async
+                if hasattr(callback, '__call__'):
+                    import inspect
+                    if inspect.iscoroutinefunction(callback):
+                        # Async callback
+                        await callback(str(instrument_token), ltp, tick_data, source="webhook")
+                    else:
+                        # Sync callback
+                        callback(str(instrument_token), ltp, tick_data, source="webhook")
             except Exception as e:
                 logger.error(f"Error in LTP update callback: {e}")
-    
-    def _handle_fallback_ltp(self, instrument: str, ltp: float, data: Dict):
+
+    async def _handle_fallback_ltp(self, instrument: str, ltp: float, data: Dict):
         """Handle LTP update from API fallback"""
         # Notify all registered callbacks
         for callback in self.ltp_update_callbacks:
             try:
-                callback(instrument, ltp, data, source="api_fallback")
+                # Check if callback is async
+                if hasattr(callback, '__call__'):
+                    import inspect
+                    if inspect.iscoroutinefunction(callback):
+                        # Async callback
+                        await callback(instrument, ltp, data, source="api_fallback")
+                    else:
+                        # Sync callback
+                        callback(instrument, ltp, data, source="api_fallback")
             except Exception as e:
                 logger.error(f"Error in LTP fallback callback: {e}")
     

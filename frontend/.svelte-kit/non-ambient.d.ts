@@ -27,19 +27,20 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/" | "/config" | "/live-trading-v2" | "/live-trading-v2/components" | "/paper-trading" | "/settings";
+		RouteId(): "/" | "/config" | "/graph" | "/live-trading-v2" | "/live-trading-v2/components" | "/paper-trading" | "/settings";
 		RouteParams(): {
 			
 		};
 		LayoutParams(): {
 			"/": Record<string, never>;
 			"/config": Record<string, never>;
+			"/graph": Record<string, never>;
 			"/live-trading-v2": Record<string, never>;
 			"/live-trading-v2/components": Record<string, never>;
 			"/paper-trading": Record<string, never>;
 			"/settings": Record<string, never>
 		};
-		Pathname(): "/" | "/config" | "/config/" | "/live-trading-v2" | "/live-trading-v2/" | "/live-trading-v2/components" | "/live-trading-v2/components/" | "/paper-trading" | "/paper-trading/" | "/settings" | "/settings/";
+		Pathname(): "/" | "/config" | "/config/" | "/graph" | "/graph/" | "/live-trading-v2" | "/live-trading-v2/" | "/live-trading-v2/components" | "/live-trading-v2/components/" | "/paper-trading" | "/paper-trading/" | "/settings" | "/settings/";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): "/favicon.png" | "/favicon.svg" | string & {};
 	}

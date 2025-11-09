@@ -1,9 +1,6 @@
 """Order management endpoints - Centralized order operations using middleware"""
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
-from sqlalchemy.orm import Session
-from typing import List, Optional, Dict, Any
-from backend.database import get_db
-from backend.models import BrokerConfig
+from fastapi import APIRouter, HTTPException, Body
+from typing import Optional, Dict, Any
 from backend.services.middleware_helper import get_middleware_instance
 from backend.broker.base import TokenExpiredError, OrderError
 import logging
@@ -14,8 +11,9 @@ router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 # ========== CONSOLIDATED ORDER APIS (Kite Connect v3 Compatible) ==========
 
+@router.get("")
 @router.get("/")
-async def get_orders(db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def get_orders() -> Dict[str, Any]:
     """
     Retrieve the list of all orders (open and executed) for the day
     GET /orders
@@ -33,14 +31,8 @@ async def get_orders(db: Session = Depends(get_db)) -> Dict[str, Any]:
         }
     """
     try:
-        # Get middleware instance
-        middleware = get_middleware_instance(db)
-        
-        if not middleware:
-            raise HTTPException(
-                status_code=401, 
-                detail="Broker not authenticated. Please login first."
-            )
+        # Get middleware instance (no database needed)
+        middleware = get_middleware_instance()
         
         # Fetch orders from broker via middleware
         orders = middleware.get_orders(use_cache=False)
@@ -81,8 +73,7 @@ async def place_order(
     auction_number: Optional[str] = Body(None),
     market_protection: Optional[int] = Body(None),
     autoslice: Optional[bool] = Body(None),
-    tag: Optional[str] = Body(None),
-    db: Session = Depends(get_db)
+    tag: Optional[str] = Body(None)
 ) -> Dict[str, Any]:
     """
     Place an order of a particular variety
@@ -116,14 +107,8 @@ async def place_order(
         {"status": "success", "data": {"order_id": "151220000000000"}}
     """
     try:
-        # Get middleware instance
-        middleware = get_middleware_instance(db)
-        
-        if not middleware:
-            raise HTTPException(
-                status_code=401,
-                detail="Broker not authenticated. Please login first."
-            )
+        # Get middleware instance (no database needed)
+        middleware = get_middleware_instance()
         
         # Place order via middleware
         result = middleware.place_order(
@@ -178,8 +163,7 @@ async def modify_order(
     order_type: Optional[str] = Body(None),
     disclosed_quantity: Optional[int] = Body(None),
     validity: Optional[str] = Body(None),
-    validity_ttl: Optional[int] = Body(None),
-    db: Session = Depends(get_db)
+    validity_ttl: Optional[int] = Body(None)
 ) -> Dict[str, Any]:
     """
     Modify an open or pending order
@@ -202,14 +186,8 @@ async def modify_order(
         {"status": "success", "data": {"order_id": "151220000000000"}}
     """
     try:
-        # Get middleware instance
-        middleware = get_middleware_instance(db)
-        
-        if not middleware:
-            raise HTTPException(
-                status_code=401,
-                detail="Broker not authenticated. Please login first."
-            )
+        # Get middleware instance (no database needed)
+        middleware = get_middleware_instance()
         
         # Modify order via middleware
         result = middleware.modify_order(
@@ -248,8 +226,7 @@ async def modify_order(
 @router.delete("/{variety}/{order_id}")
 async def cancel_order(
     variety: str,
-    order_id: str,
-    db: Session = Depends(get_db)
+    order_id: str
 ) -> Dict[str, Any]:
     """
     Cancel an open or pending order
@@ -265,14 +242,8 @@ async def cancel_order(
         {"status": "success", "data": {"order_id": "151220000000000"}}
     """
     try:
-        # Get middleware instance
-        middleware = get_middleware_instance(db)
-        
-        if not middleware:
-            raise HTTPException(
-                status_code=401,
-                detail="Broker not authenticated. Please login first."
-            )
+        # Get middleware instance (no database needed)
+        middleware = get_middleware_instance()
         
         # Cancel order via middleware
         result = middleware.cancel_order(

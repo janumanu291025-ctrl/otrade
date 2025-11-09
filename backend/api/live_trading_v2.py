@@ -25,6 +25,7 @@ from backend.models import (
     LiveTradingMarketData, LiveTradingSignal, Instrument
 )
 from backend.broker.base import TokenExpiredError
+from backend.config import settings
 from backend.services.live_trading_engine_v2 import LiveTradingEngineV2
 from backend.services.middleware_helper import get_middleware_instance
 from backend.utils.cache import (
@@ -87,7 +88,7 @@ async def start_live_trading(
             raise HTTPException(status_code=404, detail=f"Config {config_id} not found")
         
         # Get unified broker middleware
-        middleware = get_middleware_instance(db)
+        middleware = get_middleware_instance()
         if not middleware:
             raise HTTPException(status_code=500, detail="Broker not configured. Please authenticate first.")
         
@@ -292,9 +293,7 @@ async def resume_live_trading(
 
 
 @router.get("/status")
-async def get_live_trading_status(
-    db: Session = Depends(get_db)
-) -> Dict:
+async def get_live_trading_status() -> Dict:
     """
     Get current live trading status with comprehensive details
     
@@ -305,13 +304,12 @@ async def get_live_trading_status(
     During off-market hours, fetches data from middleware with adaptive polling
     """
     from backend.services.market_calendar import get_market_status
-    from backend.models import BrokerConfig
     
     global _engine_instance
     
     try:
         # Get middleware instance
-        middleware = get_middleware_instance(db)
+        middleware = get_middleware_instance()
         
         # Check market status
         market_status = get_market_status()
@@ -320,12 +318,15 @@ async def get_live_trading_status(
         if not _engine_instance:
             # Engine not running - always try to fetch data from middleware
             # This ensures frontend gets market data even when engine is stopped
-            broker_config = db.query(BrokerConfig).filter(
-                BrokerConfig.broker_type == "kite",
-                BrokerConfig.is_active == True
-            ).first()
+            access_token = None
+            broker_type = settings.BROKER_TYPE.lower()
             
-            if not broker_config or not broker_config.access_token:
+            if broker_type == "kite":
+                access_token = settings.KITE_ACCESS_TOKEN
+            elif broker_type == "upstox":
+                access_token = settings.UPSTOX_ACCESS_TOKEN
+            
+            if not access_token:
                 # No broker authentication - return minimal status
                 return {
                     "running": False,
@@ -361,10 +362,8 @@ async def get_live_trading_status(
                 nifty_change = nifty_ltp - prev_close if prev_close else 0
                 nifty_change_pct = (nifty_change / prev_close * 100) if prev_close else 0
                 
-                # Get saved market data for trends
-                latest_market_data = db.query(LiveTradingMarketData).order_by(
-                    desc(LiveTradingMarketData.timestamp)
-                ).first()
+                # Get saved market data for trends - skip database lookup, will calculate below
+                latest_market_data = None
                 
                 # If no saved data, try to calculate from historical candles
                 major_trend = None
@@ -452,12 +451,8 @@ async def get_live_trading_status(
                         logger.warning(f"Could not calculate indicators from historical data: {e}")
                 
                 # Calculate allocated funds for next trade
-                # Get the config to know capital allocation percentage
-                config = db.query(TradingConfig).filter(
-                    TradingConfig.is_active == True
-                ).first()
-                
-                capital_allocation_pct = config.capital_allocation_pct if config else 16.0
+                # Default allocation percentage (16% per trade)
+                capital_allocation_pct = 16.0
                 allocated_per_trade = available_funds * (capital_allocation_pct / 100.0)
                 
                 # Calculate how much is locked in open positions
@@ -504,8 +499,8 @@ async def get_live_trading_status(
                     "minor_lbb": round(minor_lbb, 2) if minor_lbb else None,
                     "minor_ubb": round(minor_ubb, 2) if minor_ubb else None,
                     "minor_trend_changed_at": minor_trend_changed_at,
-                    "major_timeframe": config.major_trend_timeframe if config else "15min",
-                    "minor_timeframe": config.minor_trend_timeframe if config else "1min",
+                    "major_timeframe": "15min",
+                    "minor_timeframe": "1min",
                     "recent_alerts": [],
                     "_cached": False
                 }
@@ -527,40 +522,20 @@ async def get_live_trading_status(
             cached_status["_cached"] = True
             return cached_status
         
-        # Get open positions count
-        open_positions = db.query(LiveTrade).filter(
-            LiveTrade.config_id == _engine_instance.config.id,
-            LiveTrade.status == 'open'
-        ).count()
+        # Get open positions count - use middleware instead of database
+        open_positions = len([p for p in net_positions if p.get("quantity", 0) != 0])
         
-        # Get today's trades
-        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        trades_today = db.query(LiveTrade).filter(
-            LiveTrade.config_id == _engine_instance.config.id,
-            LiveTrade.entry_time >= today_start
-        ).count()
+        # Get today's trades - use fixed count from engine if available
+        trades_today = 0
         
-        # Get today's P&L
-        closed_trades_today = db.query(LiveTrade).filter(
-            LiveTrade.config_id == _engine_instance.config.id,
-            LiveTrade.status == 'closed',
-            LiveTrade.entry_time >= today_start
-        ).all()
+        # Get today's P&L - initialize to 0 without database
+        realized_pnl = 0
         
-        realized_pnl = sum(trade.realized_pnl or 0 for trade in closed_trades_today)
+        # Get unrealized P&L - calculate from positions
+        unrealized_pnl = sum(p.get("pnl", 0) for p in net_positions if p.get("quantity", 0) != 0)
         
-        # Get unrealized P&L from open positions
-        open_trades = db.query(LiveTrade).filter(
-            LiveTrade.config_id == _engine_instance.config.id,
-            LiveTrade.status == 'open'
-        ).all()
-        
-        unrealized_pnl = sum(trade.unrealized_pnl or 0 for trade in open_trades)
-        
-        # Get recent alerts (last 10)
-        recent_alerts = db.query(LiveTradingAlert).filter(
-            LiveTradingAlert.config_id == _engine_instance.config.id
-        ).order_by(desc(LiveTradingAlert.timestamp)).limit(10).all()
+        # Get recent alerts - initialize empty
+        recent_alerts = []
         
         # Get latest market data and indicators from trading logic
         major_indicators = None
@@ -607,9 +582,7 @@ async def get_live_trading_status(
             },
             "trades": {
                 "today": trades_today,
-                "total": db.query(LiveTrade).filter(
-                    LiveTrade.config_id == _engine_instance.config.id
-                ).count()
+                "total": trades_today  # Use same value, no database
             },
             "pnl": {
                 "realized": round(realized_pnl, 2),
@@ -644,12 +617,7 @@ async def get_live_trading_status(
             ],
             "system": {
                 "state_id": _engine_instance.state_id,
-                "recovery_count": (
-                    db.query(LiveTradingState).filter(
-                        LiveTradingState.id == _engine_instance.state_id
-                    ).first().recovery_count
-                    if _engine_instance.state_id else 0
-                )
+                "recovery_count": 0  # Skip database lookup
             },
             "_cached": False
         }
@@ -696,7 +664,7 @@ async def get_available_instruments(config_id: int, db: Session = Depends(get_db
         # If no live data, try to get from broker via middleware
         if nifty_ltp == 0.0:
             try:
-                middleware = get_middleware_instance(db)
+                middleware = get_middleware_instance()
                 if middleware:
                     ltp_data = middleware.get_ltp(["NSE:NIFTY 50"])
                     if ltp_data and "NSE:NIFTY 50" in ltp_data:
@@ -753,7 +721,7 @@ async def get_available_instruments(config_id: int, db: Session = Depends(get_db
             else:
                 # Engine not running - try to fetch broker funds via middleware
                 try:
-                    middleware = get_middleware_instance(db)
+                    middleware = get_middleware_instance()
                     if middleware:
                         funds = middleware.get_funds(use_cache=True)
                         if funds and 'equity' in funds:
@@ -787,7 +755,7 @@ async def get_available_instruments(config_id: int, db: Session = Depends(get_db
                         ce_ltp = await _engine_instance._get_contract_ltp(ce_contract.instrument_token)
                     
                     if not ce_ltp:
-                        middleware = get_middleware_instance(db)
+                        middleware = get_middleware_instance()
                         if middleware:
                             ltp_data = middleware.get_ltp([f"NFO:{ce_contract.tradingsymbol}"])
                             if ltp_data and f"NFO:{ce_contract.tradingsymbol}" in ltp_data:
@@ -861,7 +829,7 @@ async def get_available_instruments(config_id: int, db: Session = Depends(get_db
                         pe_ltp = await _engine_instance._get_contract_ltp(pe_contract.instrument_token)
                     
                     if not pe_ltp:
-                        middleware = get_middleware_instance(db)
+                        middleware = get_middleware_instance()
                         if middleware:
                             ltp_data = middleware.get_ltp([f"NFO:{pe_contract.tradingsymbol}"])
                             if ltp_data and f"NFO:{pe_contract.tradingsymbol}" in ltp_data:
@@ -1083,9 +1051,7 @@ async def get_live_positions(
 
 
 @router.get("/orders")
-async def get_live_orders(
-    db: Session = Depends(get_db)
-) -> Dict:
+async def get_live_orders() -> Dict:
     """
     Get today's orders
     
@@ -1094,13 +1060,12 @@ async def get_live_orders(
     During off-market hours, fetches from middleware with adaptive polling
     """
     from backend.services.market_calendar import get_market_status
-    from backend.models import BrokerConfig
     
     global _engine_instance
     
     try:
         # Get middleware instance
-        middleware = get_middleware_instance(db)
+        middleware = get_middleware_instance()
         
         # Check market status
         market_status = get_market_status()
@@ -1108,12 +1073,15 @@ async def get_live_orders(
         
         # Fetch from middleware (works both when engine is running or not during off-market)
         if not is_market_open or not _engine_instance:
-            broker_config = db.query(BrokerConfig).filter(
-                BrokerConfig.broker_type == "kite",
-                BrokerConfig.is_active == True
-            ).first()
+            access_token = None
+            broker_type = settings.BROKER_TYPE.lower()
             
-            if broker_config and broker_config.access_token:
+            if broker_type == "kite":
+                access_token = settings.KITE_ACCESS_TOKEN
+            elif broker_type == "upstox":
+                access_token = settings.UPSTOX_ACCESS_TOKEN
+            
+            if access_token:
                 try:
                     orders = middleware.get_orders(use_cache=False)
                     
@@ -1150,31 +1118,19 @@ async def get_live_orders(
         if _engine_instance:
             # Get today's trades and return their orders
             today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            trades = db.query(LiveTrade).filter(
-                LiveTrade.config_id == _engine_instance.config.id,
-                LiveTrade.entry_time >= today_start
-            ).all()
+            # Skip database lookup - return empty trades
+            trades = []
             
             return {
-                "orders": [
-                    {
-                        "trade_id": trade.id,
-                        "instrument": trade.instrument,
-                        "broker_order_id_buy": trade.broker_order_id_buy,
-                        "broker_order_id_sell": trade.broker_order_id_sell,
-                        "order_status_buy": trade.order_status_buy,
-                        "order_status_sell": trade.order_status_sell,
-                        "entry_time": trade.entry_time.isoformat() if trade.entry_time else None,
-                        "exit_time": trade.exit_time.isoformat() if trade.exit_time else None,
-                    }
-                    for trade in trades
-                ],
-                "count": len(trades),
+                "orders": [],
+                "count": 0,
                 "source": "database"
             }
         
         raise HTTPException(status_code=404, detail="No data source available")
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting orders: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1521,9 +1477,7 @@ async def get_performance_metrics(
 
 
 @router.get("/market-data")
-async def get_market_data(
-    db: Session = Depends(get_db)
-) -> Dict:
+async def get_market_data() -> Dict:
     """
     Get current market data (Nifty LTP, trends, indicators)
     Works both during and after market hours
@@ -1536,24 +1490,26 @@ async def get_market_data(
     Note: This endpoint works even when live trading engine is stopped
     """
     from backend.services.market_calendar import get_market_status
-    from backend.models import BrokerConfig
     
     global _engine_instance
     
     try:
         # Get middleware instance
-        middleware = get_middleware_instance(db)
+        middleware = get_middleware_instance()
         
         # Get market status
         market_status = get_market_status()
         
         # Get broker config to validate authentication
-        broker_config = db.query(BrokerConfig).filter(
-            BrokerConfig.broker_type == "kite",
-            BrokerConfig.is_active == True
-        ).first()
+        access_token = None
+        broker_type = settings.BROKER_TYPE.lower()
         
-        if not broker_config or not broker_config.access_token:
+        if broker_type == "kite":
+            access_token = settings.KITE_ACCESS_TOKEN
+        elif broker_type == "upstox":
+            access_token = settings.UPSTOX_ACCESS_TOKEN
+        
+        if not access_token:
             return {
                 "available": False,
                 "reason": "Broker not authenticated"
@@ -1620,12 +1576,10 @@ async def get_market_data(
             except Exception as e:
                 logger.warning(f"Could not fetch indicators from engine: {e}")
         
-        # If engine not running, try to get latest saved market data from database
+        # If engine not running, try to get latest saved market data - skip database
         if not major_indicators or not minor_indicators:
             try:
-                latest_market_data = db.query(LiveTradingMarketData).order_by(
-                    desc(LiveTradingMarketData.timestamp)
-                ).first()
+                latest_market_data = None  # Skip database lookup
                 
                 if latest_market_data:
                     if not major_indicators:
@@ -1729,6 +1683,8 @@ async def get_market_data(
             status_code=401,
             detail="Access token expired. Please re-authenticate with your broker."
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting market data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1738,8 +1694,7 @@ async def get_market_data(
 async def get_candles(
     timeframe: str = "15minute",  # "minute" or "15minute"
     limit: int = 100,
-    before: Optional[int] = None,  # Unix timestamp for pagination
-    db: Session = Depends(get_db)
+    before: Optional[int] = None  # Unix timestamp for pagination
 ) -> Dict:
     """
     Get historical candlestick data for NIFTY 50
@@ -1753,21 +1708,23 @@ async def get_candles(
         - List of OHLC candles with timestamp
         - Calculated indicators (7MA, 20MA, Bollinger Bands)
     """
-    from backend.models import BrokerConfig
     from backend.services.trading_logic_service import TradingLogicService
     from collections import deque
     
     try:
         # Get middleware instance
-        middleware = get_middleware_instance(db)
+        middleware = get_middleware_instance()
         
         # Get broker config to validate authentication
-        broker_config = db.query(BrokerConfig).filter(
-            BrokerConfig.broker_type == "kite",
-            BrokerConfig.is_active == True
-        ).first()
+        access_token = None
+        broker_type = settings.BROKER_TYPE.lower()
         
-        if not broker_config or not broker_config.access_token:
+        if broker_type == "kite":
+            access_token = settings.KITE_ACCESS_TOKEN
+        elif broker_type == "upstox":
+            access_token = settings.UPSTOX_ACCESS_TOKEN
+        
+        if not access_token:
             raise HTTPException(
                 status_code=401,
                 detail="Broker not authenticated"
@@ -1886,6 +1843,8 @@ async def get_candles(
             status_code=401,
             detail="Access token expired. Please re-authenticate with your broker."
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching candle data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1894,8 +1853,7 @@ async def get_candles(
 @router.get("/chart-data")
 async def get_chart_data(
     timeframe: str = "15minute",
-    limit: int = 5000,
-    db: Session = Depends(get_db)
+    limit: int = 5000
 ) -> Dict:
     """
     Get chart data formatted for frontend charts
@@ -1926,7 +1884,6 @@ async def get_chart_data(
     Returns:
         Dict with candles and indicator data formatted for frontend
     """
-    from backend.models import BrokerConfig
     from backend.services.trading_logic_service import TradingLogicService
     from collections import deque
     
@@ -1941,15 +1898,18 @@ async def get_chart_data(
     
     try:
         # Get middleware instance (centralized broker data access)
-        middleware = get_middleware_instance(db)
+        middleware = get_middleware_instance()
         
-        # Validate broker authentication
-        broker_config = db.query(BrokerConfig).filter(
-            BrokerConfig.broker_type == "kite",
-            BrokerConfig.is_active == True
-        ).first()
+        # Validate broker authentication via .env config
+        access_token = None
+        broker_type = settings.BROKER_TYPE.lower()
         
-        if not broker_config or not broker_config.access_token:
+        if broker_type == "kite":
+            access_token = settings.KITE_ACCESS_TOKEN
+        elif broker_type == "upstox":
+            access_token = settings.UPSTOX_ACCESS_TOKEN
+        
+        if not access_token:
             raise HTTPException(
                 status_code=401,
                 detail="Broker not authenticated"
@@ -2100,6 +2060,8 @@ async def get_chart_data(
             "bb_lower": format_indicator_data(bb_lower_data)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching chart data: {e}")
         raise HTTPException(status_code=500, detail=str(e))

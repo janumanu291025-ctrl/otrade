@@ -1,43 +1,54 @@
 """
-Broker Factory - Get broker client instance
+Broker Factory - Get broker client instance using .env configuration
 """
-from sqlalchemy.orm import Session
-from backend.models import BrokerConfig
+
+from backend.config import settings
 from backend.broker.kite.client import KiteBroker
+from backend.broker.upstox.client import UpstoxBroker
 
 
-def get_broker_client(db: Session, raise_exception: bool = True):
+def get_broker_client(raise_exception: bool = True):
     """
-    Get active broker client
+    Get active broker client from .env configuration
     
     Args:
-        db: Database session
         raise_exception: If False, returns None instead of raising exception
     
     Returns:
         Broker client instance or None
     """
-    broker_config = db.query(BrokerConfig).filter(
-        BrokerConfig.is_active == True
-    ).first()
+    broker_type = settings.BROKER_TYPE.lower()
     
-    if not broker_config:
-        if raise_exception:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=400, detail="No active broker connection")
-        return None
-    
-    if broker_config.broker_type == "kite":
+    if broker_type == "kite":
+        if not settings.KITE_API_KEY or not settings.KITE_API_SECRET:
+            if raise_exception:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=400, detail="Missing Kite credentials in .env")
+            return None
+        
         return KiteBroker(
-            api_key=broker_config.api_key,
-            api_secret=broker_config.api_secret,
-            access_token=broker_config.access_token
+            api_key=settings.KITE_API_KEY,
+            api_secret=settings.KITE_API_SECRET,
+            access_token=settings.KITE_ACCESS_TOKEN
+        )
+    
+    elif broker_type == "upstox":
+        if not settings.UPSTOX_API_KEY or not settings.UPSTOX_API_SECRET:
+            if raise_exception:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=400, detail="Missing Upstox credentials in .env")
+            return None
+        
+        return UpstoxBroker(
+            api_key=settings.UPSTOX_API_KEY,
+            api_secret=settings.UPSTOX_API_SECRET,
+            access_token=settings.UPSTOX_ACCESS_TOKEN
         )
     
     # Unsupported broker type
     if raise_exception:
         from fastapi import HTTPException
-        error_msg = f"Unsupported broker type: {broker_config.broker_type}"
+        error_msg = f"Unsupported broker type: {broker_type}"
         raise HTTPException(status_code=400, detail=error_msg)
     
     return None

@@ -43,6 +43,10 @@
 			<span class="text-xl">🔴</span>
 			<span class="font-medium">Live</span>
 		</a>
+		<a href="/graph" class="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors duration-150">
+			<span class="text-xl">�</span>
+			<span class="font-medium">Graph</span>
+		</a>
 		</nav>
 	</aside>
 	

@@ -147,8 +147,12 @@
 			if (response.data) {
 				brokerConfig = {
 					...brokerConfig,
+					broker_type: response.data.broker_type || 'kite',
 					api_key: response.data.api_key || '',
 					api_secret: response.data.api_secret || '',
+					access_token: response.data.access_token || '',
+					user_id: response.data.user_id || '',
+					password: response.data.password || '',
 					redirect_url: response.data.redirect_url || '',
 					postback_url: response.data.postback_url || ''
 				};
@@ -204,7 +208,9 @@
 				api_key: brokerConfig.api_key,
 				api_secret: brokerConfig.api_secret,
 				redirect_url: brokerConfig.redirect_url,
-				postback_url: brokerConfig.postback_url
+				postback_url: brokerConfig.postback_url,
+				user_id: brokerConfig.user_id,
+				password: brokerConfig.password
 			});
 			
 			brokerSuccess = 'Broker configuration saved successfully!';
@@ -442,7 +448,50 @@
 									{showApiSecret ? '🙈' : '👁️'}
 								</button>
 							</div>
-						</div>						<div>
+						</div>
+						
+						<div>
+							<label for="user-id" class="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+							<input
+								id="user-id"
+								type="text"
+								bind:value={brokerConfig.user_id}
+								placeholder="Your Kite User ID"
+								class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+							/>
+						</div>
+						
+						<div>
+							<label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+							<div class="relative">
+								{#if showAccessToken}
+									<input
+										id="password"
+										type="text"
+										bind:value={brokerConfig.password}
+										placeholder="Your Kite Password"
+										class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+									/>
+								{:else}
+									<input
+										id="password"
+										type="password"
+										bind:value={brokerConfig.password}
+										placeholder="Your Kite Password"
+										class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+									/>
+								{/if}
+								<button
+									type="button"
+									on:click={() => showAccessToken = !showAccessToken}
+									class="absolute right-3 top-3 text-gray-600 hover:text-gray-900"
+								>
+									{showAccessToken ? '🙈' : '👁️'}
+								</button>
+							</div>
+						</div>
+						
+						<div>
 							<label for="redirect-url" class="block text-sm font-medium text-gray-700 mb-1">Redirect URL</label>
 							<input
 								id="redirect-url"

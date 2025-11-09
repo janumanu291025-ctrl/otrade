@@ -1,7 +1,5 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
-	import CandlestickChart from '$lib/components/CandlestickChart.svelte';
-	import AdvancedChart from '$lib/components/AdvancedChart.svelte';
 	
 	// API Base URL
 	const API_URL = 'http://localhost:8000/api/live-trading-v2';
@@ -1262,20 +1260,12 @@ async function closeBrokerPosition(position) {
 			</button>
 			<button
 				on:click={() => mainTab = 'trades'}
-				class="px-6 py-3 rounded-t-lg font-medium transition-colors {mainTab === 'trades' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}"
-			>
-				📊 Trades
-			</button>
-			<button
-				on:click={() => mainTab = 'charts'}
-				class="px-6 py-3 rounded-t-lg font-medium transition-colors {mainTab === 'charts' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}"
-			>
-				📈 Charts
-			</button>
-		</div>
+			class="px-6 py-3 rounded-t-lg font-medium transition-colors {mainTab === 'trades' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}"
+		>
+			📊 Trades
+		</button>
 	</div>
-	
-	<!-- Error Display -->
+</div>	<!-- Error Display -->
 	{#if error}
 		<div class="bg-red-50 border border-red-200 rounded-lg p-4">
 			<div class="flex items-center justify-between">
@@ -2275,40 +2265,7 @@ async function closeBrokerPosition(position) {
 			</div>
 		</div>
 		
-		<!-- NIFTY 50 Candlestick Charts Card -->
-		<div class="col-span-full bg-white rounded-lg shadow-md p-6">
-			<h2 class="text-xl font-bold mb-4">NIFTY 50 Charts</h2>
-			<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-				<!-- Major Timeframe Chart (15 minutes) -->
-				<CandlestickChart 
-					timeframe="15minute"
-					title="Major Timeframe"
-					height={350}
-					wsLtp={engineStatus.nifty_ltp}
-				/>
-				
-				<!-- Minor Timeframe Chart (1 minute) -->
-				<CandlestickChart 
-					timeframe="minute"
-					title="Minor Timeframe"
-					height={350}
-					wsLtp={engineStatus.nifty_ltp}
-				/>
-			</div>
-			
-			<!-- Chart Info -->
-			<div class="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-				<p class="text-xs text-blue-800">
-					<span class="font-semibold">💡 Chart Info:</span>
-					During market hours, charts update automatically using live data from WebSocket. 
-					During off-market hours, historical data is fetched from the database/API.
-					Green line = 7 MA, Red line = 20 MA, Blue dashed lines = Bollinger Bands.
-				</p>
-			</div>
-		</div>
-	{/if}
-	
-	<!-- Trades Tab -->
+{/if}	<!-- Trades Tab -->
 	{#if mainTab === 'trades'}
 		<div class="bg-white rounded-lg shadow-md">
 			<!-- Subtab Headers -->
@@ -2490,8 +2447,9 @@ async function closeBrokerPosition(position) {
 			<div class="px-6 py-4">
 				<div class="space-y-4">
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Order ID</label>
+						<label for="modify-order-id" class="block text-sm font-medium text-gray-700 mb-1">Order ID</label>
 						<input 
+							id="modify-order-id"
 							type="text" 
 							value={modifyOrderId} 
 							disabled 
@@ -2499,8 +2457,9 @@ async function closeBrokerPosition(position) {
 						/>
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">New Price</label>
+						<label for="modify-price" class="block text-sm font-medium text-gray-700 mb-1">New Price</label>
 						<input 
+							id="modify-price"
 							type="number" 
 							bind:value={modifyPrice}
 							step="0.01"
@@ -2539,8 +2498,9 @@ async function closeBrokerPosition(position) {
 				<div class="grid grid-cols-2 gap-4">
 					<!-- Trading Symbol -->
 					<div class="col-span-2">
-						<label class="block text-sm font-medium text-gray-700 mb-1">Trading Symbol *</label>
+						<label for="manual-tradingsymbol" class="block text-sm font-medium text-gray-700 mb-1">Trading Symbol *</label>
 						<input 
+							id="manual-tradingsymbol"
 							type="text" 
 							bind:value={manualOrder.tradingsymbol}
 							placeholder="e.g., NIFTY2411118000CE"
@@ -2551,8 +2511,9 @@ async function closeBrokerPosition(position) {
 					
 					<!-- Exchange -->
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Exchange *</label>
+						<label for="manual-exchange" class="block text-sm font-medium text-gray-700 mb-1">Exchange *</label>
 						<select 
+							id="manual-exchange"
 							bind:value={manualOrder.exchange}
 							class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 						>
@@ -2567,8 +2528,9 @@ async function closeBrokerPosition(position) {
 					
 					<!-- Transaction Type -->
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Transaction Type *</label>
+						<label for="manual-transaction-type" class="block text-sm font-medium text-gray-700 mb-1">Transaction Type *</label>
 						<select 
+							id="manual-transaction-type"
 							bind:value={manualOrder.transaction_type}
 							class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 						>
@@ -2579,8 +2541,9 @@ async function closeBrokerPosition(position) {
 					
 					<!-- Quantity -->
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+						<label for="manual-quantity" class="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
 						<input 
+							id="manual-quantity"
 							type="number" 
 							bind:value={manualOrder.quantity}
 							min="1"
@@ -2592,8 +2555,9 @@ async function closeBrokerPosition(position) {
 					
 					<!-- Order Type -->
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Order Type *</label>
+						<label for="manual-order-type" class="block text-sm font-medium text-gray-700 mb-1">Order Type *</label>
 						<select 
+							id="manual-order-type"
 							bind:value={manualOrder.order_type}
 							class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 						>
@@ -2606,8 +2570,9 @@ async function closeBrokerPosition(position) {
 					
 					<!-- Product -->
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Product *</label>
+						<label for="manual-product" class="block text-sm font-medium text-gray-700 mb-1">Product *</label>
 						<select 
+							id="manual-product"
 							bind:value={manualOrder.product}
 							class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 						>
@@ -2619,8 +2584,9 @@ async function closeBrokerPosition(position) {
 					
 					<!-- Validity -->
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Validity</label>
+						<label for="manual-validity" class="block text-sm font-medium text-gray-700 mb-1">Validity</label>
 						<select 
+							id="manual-validity"
 							bind:value={manualOrder.validity}
 							class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 						>
@@ -2632,8 +2598,9 @@ async function closeBrokerPosition(position) {
 					<!-- Price (for LIMIT orders) -->
 					{#if manualOrder.order_type === 'LIMIT' || manualOrder.order_type === 'SL'}
 						<div>
-							<label class="block text-sm font-medium text-gray-700 mb-1">Price * {manualOrder.order_type === 'LIMIT' ? '(Limit Price)' : '(Limit Price after trigger)'}</label>
+							<label for="manual-price" class="block text-sm font-medium text-gray-700 mb-1">Price * {manualOrder.order_type === 'LIMIT' ? '(Limit Price)' : '(Limit Price after trigger)'}</label>
 							<input 
+								id="manual-price"
 								type="number" 
 								bind:value={manualOrder.price}
 								step="0.05"
@@ -2647,8 +2614,9 @@ async function closeBrokerPosition(position) {
 					<!-- Trigger Price (for SL orders) -->
 					{#if manualOrder.order_type === 'SL' || manualOrder.order_type === 'SL-M'}
 						<div>
-							<label class="block text-sm font-medium text-gray-700 mb-1">Trigger Price *</label>
+							<label for="manual-trigger-price" class="block text-sm font-medium text-gray-700 mb-1">Trigger Price *</label>
 							<input 
+								id="manual-trigger-price"
 								type="number" 
 								bind:value={manualOrder.trigger_price}
 								step="0.05"
@@ -2692,20 +2660,3 @@ async function closeBrokerPosition(position) {
 	</div>
 </div>
 {/if}
-
-<!-- Charts Tab - Full Screen Advanced Chart -->
-{#if mainTab === 'charts'}
-	<div class="chart-fullscreen-container">
-		<AdvancedChart />
-	</div>
-{/if}
-
-<style>
-	.chart-fullscreen-container {
-		position: relative;
-		width: 100%;
-		height: calc(100vh - 200px); /* Subtract header + tabs height */
-		min-height: 600px;
-		background: white;
-	}
-</style>

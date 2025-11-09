@@ -4,18 +4,16 @@ Middleware Status API Endpoints
 
 REST API endpoints for monitoring the unified broker middleware status.
 """
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException
 
-from backend.database import get_db
 from backend.schemas import MiddlewareStatus
-from backend.services.middleware_helper import get_middleware
+from backend.services.middleware_helper import get_middleware_instance
 
 router = APIRouter(prefix="/api/middleware", tags=["middleware"])
 
 
 @router.get("/status", response_model=MiddlewareStatus)
-async def get_middleware_status(middleware = Depends(get_middleware)):
+async def get_middleware_status():
     """
     Get current status of the unified broker middleware
     
@@ -30,6 +28,7 @@ async def get_middleware_status(middleware = Depends(get_middleware)):
         - polling_active: Whether API polling is active
     """
     try:
+        middleware = get_middleware_instance()
         status = middleware.get_status()
         return MiddlewareStatus(**status)
     except Exception as e:

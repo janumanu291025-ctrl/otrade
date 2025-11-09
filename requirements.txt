@@ -17,6 +17,9 @@ pandas==2.1.3
 numpy==1.26.2
 numba==0.59.0  # Updated for Python 3.12 compatibility
 
+# High-Performance JSON Processing (10x faster than standard json)
+orjson==3.9.10
+
 # Technical Analysis
 # ta-lib==0.4.28  # Removed - requires system libraries, not essential for core functionality
 python-dateutil==2.8.2

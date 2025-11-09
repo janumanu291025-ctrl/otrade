@@ -1,9 +1,6 @@
 """Portfolio and fund management endpoints - Centralized positions and holdings"""
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
-from backend.database import get_db
-from backend.models import BrokerConfig
 from backend.services.middleware_helper import get_middleware_instance
 from backend.broker.base import TokenExpiredError
 from datetime import datetime, date
@@ -16,7 +13,7 @@ router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 # ========== CONSOLIDATED PORTFOLIO API (Kite Connect v3 Compatible) ==========
 
 @router.get("/positions")
-async def get_portfolio_positions(db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def get_portfolio_positions() -> Dict[str, Any]:
     """
     Retrieve the list of short term positions
     GET /portfolio/positions
@@ -45,7 +42,7 @@ async def get_portfolio_positions(db: Session = Depends(get_db)) -> Dict[str, An
     """
     try:
         # Get middleware instance
-        middleware = get_middleware_instance(db)
+        middleware = get_middleware_instance()
         
         if not middleware:
             raise HTTPException(
