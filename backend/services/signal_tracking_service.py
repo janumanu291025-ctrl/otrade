@@ -27,7 +27,7 @@ from collections import deque
 
 from backend.models import TradingConfig, LiveTradingSignal
 from backend.services.unified_broker_middleware import UnifiedBrokerMiddleware
-from backend.services.market_time import is_market_open
+from backend.services.market_calendar import is_market_open
 from backend.services.trading_logic_service import TradingLogicService
 
 logger = logging.getLogger(__name__)

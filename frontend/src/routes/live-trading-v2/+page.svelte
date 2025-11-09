@@ -526,35 +526,45 @@
 	
 	async function loadTrades() {
 		try {
-			const response = await fetch(`${API_URL}/trades?limit=50`);
+			// Fetch executed orders/trades from broker via centralized orders API
+			const response = await fetch(`${API_URL}/orders`);
 			
 			if (response.status === 401) {
 				showTokenExpiredModal = true;
 				return;
 			}
 			
-			// If engine not running, might get 404 - that's okay, just return
-			if (response.status === 404) {
+			// If no orders available
+			if (response.status === 404 || response.status === 204) {
 				activeTrades = [];
 				closedTrades = [];
 				return;
 			}
 			
 			const data = await response.json();
-			const trades = data.trades || [];
+			const orders = data.data || [];
 			
-			activeTrades = trades.filter(t => t.status === 'open');
-			closedTrades = trades.filter(t => t.status === 'closed');
+			// Filter orders by execution status
+			// Active: pending, open orders
+			// Closed: executed, cancelled, rejected orders
+			activeTrades = orders.filter(o => 
+				['pending', 'open', 'trigger pending'].includes(o.status?.toLowerCase())
+			);
+			closedTrades = orders.filter(o => 
+				['complete', 'cancelled', 'rejected', 'expired'].includes(o.status?.toLowerCase())
+			);
 			
-			// Calculate performance metrics
-			performance.total_trades = closedTrades.length;
-			performance.call_trades = closedTrades.filter(t => t.option_type === 'CE').length;
-			performance.put_trades = closedTrades.filter(t => t.option_type === 'PE').length;
+			// Calculate performance metrics from executed trades
+			const executedTrades = orders.filter(o => o.status?.toLowerCase() === 'complete');
+			performance.total_trades = executedTrades.length;
+			performance.call_trades = executedTrades.filter(o => o.instrument_type === 'CE').length;
+			performance.put_trades = executedTrades.filter(o => o.instrument_type === 'PE').length;
 			
-			const closedWithPnl = closedTrades.filter(t => t.realized_pnl !== 0);
-			const winners = closedWithPnl.filter(t => t.realized_pnl > 0);
-			performance.win_rate = closedWithPnl.length > 0
-				? (winners.length / closedWithPnl.length * 100).toFixed(1)
+			// Calculate win rate based on orders marked for tracking
+			const trackedOrders = executedTrades.filter(o => o.pnl !== undefined);
+			const winners = trackedOrders.filter(o => o.pnl > 0);
+			performance.win_rate = trackedOrders.length > 0
+				? (winners.length / trackedOrders.length * 100).toFixed(1)
 				: 0;
 		} catch (err) {
 			console.error('Error loading trades:', err);
@@ -581,21 +591,23 @@
 	
 	async function loadOrders() {
 		try {
-			const response = await fetch(`${API_URL}/orders`);
+			// Use consolidated GET /api/orders endpoint
+			const response = await fetch('http://localhost:8000/api/orders');
 			
 			if (response.status === 401) {
 				showTokenExpiredModal = true;
 				return;
 			}
 			
-			// If engine not running, might get 404 - that's okay
+			// If engine not running or no orders, that's okay
 			if (response.status === 404) {
 				orders = [];
 				return;
 			}
 			
 			const data = await response.json();
-			orders = data.orders || [];
+			// New API returns {status, data, count} format
+			orders = data.data || data.orders || [];
 		} catch (err) {
 			console.error('Error loading orders:', err);
 			orders = [];
@@ -604,21 +616,24 @@
 	
 	async function loadPositions() {
 		try {
-			const response = await fetch(`${API_URL}/positions`);
+			// Use consolidated portfolio API for positions (net and day)
+			const response = await fetch('http://localhost:8000/api/portfolio/positions');
 			
 			if (response.status === 401) {
 				showTokenExpiredModal = true;
 				return;
 			}
 			
-			// If engine not running, might get 404 - that's okay
+			// If no data available
 			if (response.status === 404) {
 				positions = [];
 				return;
 			}
 			
 			const data = await response.json();
-			positions = data.positions || [];
+			// Extract net positions from the consolidated response
+			const positionsData = data.data || {};
+			positions = positionsData.net || [];
 		} catch (err) {
 			console.error('Error loading positions:', err);
 			positions = [];
@@ -810,16 +825,15 @@
 		}
 	}
 	
-	// Order management functions
-	async function cancelOrder(orderId) {
+	// Order management functions (using consolidated API)
+	async function cancelOrder(orderId, variety = 'regular') {
 		if (!confirm('Are you sure you want to cancel this order?')) {
 			return;
 		}
 		
 		try {
-			// Use DELETE method with order_id in URL path
-			// Assuming regular variety for most orders
-			const response = await fetch(`http://localhost:8000/api/broker/orders/regular/${orderId}`, {
+			// Use consolidated DELETE /api/orders/:variety/:order_id endpoint
+			const response = await fetch(`http://localhost:8000/api/orders/${variety}/${orderId}`, {
 				method: 'DELETE'
 			});
 			
@@ -892,25 +906,28 @@
 		}
 		
 		try {
-			const params = new URLSearchParams({
+			// Use consolidated POST /api/orders/:variety endpoint with JSON body
+			const orderData = {
 				tradingsymbol: manualOrder.tradingsymbol.toUpperCase(),
 				exchange: manualOrder.exchange,
 				transaction_type: manualOrder.transaction_type,
-				quantity: manualOrder.quantity.toString(),
+				quantity: manualOrder.quantity,
 				order_type: manualOrder.order_type,
 				product: manualOrder.product,
 				validity: manualOrder.validity
-			});
+			};
 			
 			if (manualOrder.price) {
-				params.append('price', manualOrder.price.toString());
+				orderData.price = parseFloat(manualOrder.price);
 			}
 			if (manualOrder.trigger_price) {
-				params.append('trigger_price', manualOrder.trigger_price.toString());
+				orderData.trigger_price = parseFloat(manualOrder.trigger_price);
 			}
 			
-			const response = await fetch(`http://localhost:8000/api/broker/orders/place?${params}`, {
-				method: 'POST'
+			const response = await fetch(`http://localhost:8000/api/orders/regular`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(orderData)
 			});
 			
 			if (!response.ok) {
@@ -935,18 +952,19 @@
 		showModifyModal = true;
 	}
 	
-	async function modifyOrder() {
+	async function modifyOrder(variety = 'regular') {
 		if (!modifyOrderId || !modifyPrice) return;
 		
 		try {
-			// Use PUT method with order_id in URL path
-			// Build query string for parameters
-			const params = new URLSearchParams({
-				price: parseFloat(modifyPrice).toString()
-			});
+			// Use consolidated PUT /api/orders/:variety/:order_id endpoint with JSON body
+			const modifyData = {
+				price: parseFloat(modifyPrice)
+			};
 			
-			const response = await fetch(`http://localhost:8000/api/broker/orders/regular/${modifyOrderId}?${params}`, {
-				method: 'PUT'
+			const response = await fetch(`http://localhost:8000/api/orders/${variety}/${modifyOrderId}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(modifyData)
 			});
 			
 			if (!response.ok) {
@@ -2327,7 +2345,6 @@ async function closeBrokerPosition(position) {
 					timeframe="15minute"
 					title="Major Timeframe"
 					height={350}
-					apiUrl={API_URL}
 					wsLtp={engineStatus.nifty_ltp}
 				/>
 				
@@ -2336,7 +2353,6 @@ async function closeBrokerPosition(position) {
 					timeframe="minute"
 					title="Minor Timeframe"
 					height={350}
-					apiUrl={API_URL}
 					wsLtp={engineStatus.nifty_ltp}
 				/>
 			</div>
@@ -2741,7 +2757,7 @@ async function closeBrokerPosition(position) {
 <!-- Charts Tab - Full Screen Advanced Chart -->
 {#if mainTab === 'charts'}
 	<div class="chart-fullscreen-container">
-		<AdvancedChart apiUrl={API_URL} />
+		<AdvancedChart />
 	</div>
 {/if}
 

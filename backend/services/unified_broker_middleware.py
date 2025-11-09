@@ -38,7 +38,7 @@ import pytz
 from sqlalchemy.orm import Session
 
 from backend.broker.base import BaseBroker, TokenExpiredError
-from backend.services.market_time import MarketTimeService
+from backend.services.market_calendar import MarketCalendar
 from backend.models import Instrument
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ class WebhookConnectionManager:
     Active only during market hours (9:00 AM - 3:30 PM)
     """
     
-    def __init__(self, broker: BaseBroker, market_time_service: MarketTimeService):
+    def __init__(self, broker: BaseBroker, market_time_service: MarketCalendar):
         self.broker = broker
         self.market_time = market_time_service
         
@@ -83,7 +83,7 @@ class WebhookConnectionManager:
         self.running = True
         
         # Check if it's webhook connection time
-        if self.market_time.is_webhook_connection_time():
+        if self.market_time.is_market_open():
             await self._connect()
         
         # Start monitoring task
@@ -168,7 +168,7 @@ class WebhookConnectionManager:
                 now = datetime.now(IST)
                 
                 # Check if we should be connected
-                should_be_connected = self.market_time.is_webhook_connection_time()
+                should_be_connected = self.market_time.is_market_open()
                 
                 if should_be_connected and not self.is_connected:
                     # Should be connected but aren't - try to connect
@@ -247,7 +247,7 @@ class DataPollingScheduler:
     Adapts polling frequency based on market hours
     """
     
-    def __init__(self, broker: BaseBroker, market_time_service: MarketTimeService):
+    def __init__(self, broker: BaseBroker, market_time_service: MarketCalendar):
         self.broker = broker
         self.market_time = market_time_service
         
@@ -508,7 +508,8 @@ class UnifiedBrokerMiddleware:
         self.db = db
         
         # Initialize market time service
-        self.market_time = MarketTimeService(db)
+        from backend.services.market_calendar import get_market_calendar
+        self.market_time = get_market_calendar()
         
         # Initialize sub-components
         self.webhook_manager = WebhookConnectionManager(broker, self.market_time)
@@ -598,7 +599,7 @@ class UnifiedBrokerMiddleware:
                 webhook_active = self.webhook_manager.is_data_flowing()
                 
                 # Check if we're in market hours
-                in_market_hours = self.market_time.is_webhook_connection_time()
+                in_market_hours = self.market_time.is_market_open()
                 
                 # Determine if we need LTP fallback
                 if in_market_hours and not webhook_active and self.subscribed_instruments_for_ltp:
@@ -810,7 +811,7 @@ class UnifiedBrokerMiddleware:
         return {
             "running": self.running,
             "market_hours_active": self.market_time.is_market_open(),
-            "webhook_connection_time": self.market_time.is_webhook_connection_time(),
+            "webhook_connection_time": self.market_time.is_market_open(),
             "webhook_connected": self.webhook_manager.is_connected,
             "webhook_data_flowing": self.webhook_manager.is_data_flowing(),
             "ltp_fallback_active": self.polling_scheduler.ltp_fallback_active,

@@ -26,7 +26,7 @@ from backend.models import (
     PaperTradingAlert, Instrument
 )
 from backend.services.broker_data_service import BrokerDataService
-from backend.services.market_time import is_market_open, get_market_status
+from backend.services.market_calendar import is_market_open, get_market_status
 from backend.services.historical_data import HistoricalDataService
 from backend.services.trading_logic_service import TradingLogicService
 
@@ -1218,20 +1218,15 @@ class PaperTradingEngine:
             self.current_mode = "historical"
             logger.info("Forced HISTORICAL mode")
         else:  # auto mode
-            # Use db session to check market status
-            from backend.database import get_db
-            db = next(get_db())
-            try:
-                market_status = get_market_status(db)
-                if market_status['is_open']:
-                    self.current_mode = "live"
-                    logger.info("AUTO mode: Market is open - Using LIVE data")
-                else:
-                    self.current_mode = "historical"
-                    logger.info(f"AUTO mode: Market is closed - Using HISTORICAL simulation")
-            finally:
-                db.close()
-                logger.info(f"Next trading day: {market_status.get('next_trading_day', 'Unknown')}")
+            # Check market status from exchange calendar
+            market_status = get_market_status()
+            if market_status['is_open']:
+                self.current_mode = "live"
+                logger.info("AUTO mode: Market is open - Using LIVE data")
+            else:
+                self.current_mode = "historical"
+                logger.info(f"AUTO mode: Market is closed - Using HISTORICAL simulation")
+            logger.info(f"Next trading day: {market_status.get('next_trading_day', 'Unknown')}")
     
     async def _start_historical_simulation(self):
         """

@@ -4,6 +4,7 @@
 	import { brokerAPI } from '$lib/utils/api';
 	// Temporarily disabled until models are updated
 	// import { portfolioAPI, positionsAPI, ordersAPI } from '$lib/utils/api';
+	import { marketHoursAPI } from '$lib/utils/api';
 	import { formatCurrency, getTrendColor } from '$lib/utils/helpers';
 	import axios from 'axios';
 	
@@ -16,6 +17,12 @@
 	let openOrders = [];
 	let loading = true;
 	let statusCheckInterval = null;
+	
+	// Holiday card state
+	let holidayData = null;
+	let holidayLoading = false;
+	let holidayError = null;
+	let mounted = false;
 	
 	// Instrument download state
 	let instrumentStatus = null;
@@ -49,31 +56,6 @@
 	let authWindow = null;
 	let authCheckInterval = null;
 	
-	// Market Hours state
-	let marketHours = {
-		start_time: '09:15',
-		end_time: '15:30',
-		trading_days: [0, 1, 2, 3, 4],
-		webhook_url: '',
-		polling_interval_seconds: 300
-	};
-	let marketHoursLoading = false;
-	let marketHoursSuccess = null;
-	let marketHoursError = null;
-	
-	// Holidays state
-	let holidays = [];
-	let holidaysLoading = false;
-	let holidaysError = null;
-	let holidaysSuccess = null;
-	let selectedYear = new Date().getFullYear();
-	let showAddHolidayForm = false;
-	let newHoliday = {
-		date: '',
-		name: '',
-		description: ''
-	};
-	
 	const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 	
 	// Reactive statement to sync broker status
@@ -88,6 +70,8 @@
 	// Removed activeTab check - always load holidays now
 	
 	onMount(async () => {
+		mounted = true;
+		console.log('🎯 Component mounted, starting initialization...');
 		await initializeDashboard();
 		
 		// Check broker status every 30 seconds
@@ -107,12 +91,17 @@
 			await broker.loadStatus('kite');
 			await loadBrokerStatus();
 			await loadEnvConfig();
-			await loadMarketHours();
-			await loadHolidays();
 			
 			// Load instrument status (independent, don't block other loads)
 			loadInstrumentStatus().catch(err => {
 				console.error('Error loading instrument status:', err);
+			});
+			
+			// Load holiday data (independent, don't block other loads)
+			loadHolidayData().then(() => {
+				console.log('✅ Holiday data loaded successfully');
+			}).catch(err => {
+				console.error('❌ Error loading holiday data:', err);
 			});
 			
 			// Load overview data - temporarily disabled until models are updated
@@ -283,120 +272,6 @@
 		}
 	}
 	
-	// Market Hours functions
-	async function loadMarketHours() {
-		marketHoursLoading = true;
-		marketHoursError = null;
-		
-		try {
-			const response = await axios.get('http://localhost:8000/api/market-time/config');
-			marketHours = response.data;
-		} catch (err) {
-			console.error('Error loading market hours:', err);
-			marketHoursError = 'Failed to load market hours configuration';
-		} finally {
-			marketHoursLoading = false;
-		}
-	}
-	
-	async function saveMarketHours() {
-		marketHoursLoading = true;
-		marketHoursError = null;
-		marketHoursSuccess = null;
-		
-		try {
-			const response = await axios.put('http://localhost:8000/api/market-time/config', marketHours);
-			marketHoursSuccess = 'Market hours configuration saved successfully!';
-			setTimeout(() => marketHoursSuccess = null, 3000);
-		} catch (err) {
-			console.error('Error saving market hours:', err);
-			marketHoursError = err.response?.data?.detail || 'Failed to save market hours configuration';
-		} finally {
-			marketHoursLoading = false;
-		}
-	}
-	
-	function toggleTradingDay(dayIndex) {
-		const index = marketHours.trading_days.indexOf(dayIndex);
-		if (index > -1) {
-			marketHours.trading_days = marketHours.trading_days.filter(d => d !== dayIndex);
-		} else {
-			marketHours.trading_days = [...marketHours.trading_days, dayIndex].sort();
-		}
-	}
-	
-	// Holiday management functions
-	async function loadHolidays() {
-		holidaysLoading = true;
-		holidaysError = null;
-		
-		try {
-			const url = selectedYear 
-				? `http://localhost:8000/api/market-time/holidays?year=${selectedYear}`
-				: 'http://localhost:8000/api/market-time/holidays';
-			const response = await axios.get(url);
-			holidays = response.data;
-		} catch (err) {
-			console.error('Error loading holidays:', err);
-			holidaysError = 'Failed to load holidays';
-		} finally {
-			holidaysLoading = false;
-		}
-	}
-	
-	async function addHoliday() {
-		if (!newHoliday.date || !newHoliday.name) {
-			holidaysError = 'Date and name are required';
-			return;
-		}
-		
-		holidaysLoading = true;
-		holidaysError = null;
-		holidaysSuccess = null;
-		
-		try {
-			await axios.post('http://localhost:8000/api/market-time/holidays', newHoliday);
-			holidaysSuccess = 'Holiday added successfully!';
-			setTimeout(() => holidaysSuccess = null, 3000);
-			
-			// Reset form
-			newHoliday = { date: '', name: '', description: '' };
-			showAddHolidayForm = false;
-			
-			// Reload holidays
-			await loadHolidays();
-		} catch (err) {
-			console.error('Error adding holiday:', err);
-			holidaysError = err.response?.data?.detail || 'Failed to add holiday';
-		} finally {
-			holidaysLoading = false;
-		}
-	}
-	
-	async function deleteHoliday(date) {
-		if (!confirm(`Are you sure you want to delete the holiday on ${date}?`)) {
-			return;
-		}
-		
-		holidaysLoading = true;
-		holidaysError = null;
-		holidaysSuccess = null;
-		
-		try {
-			await axios.delete(`http://localhost:8000/api/market-time/holidays/${date}`);
-			holidaysSuccess = 'Holiday deleted successfully!';
-			setTimeout(() => holidaysSuccess = null, 3000);
-			
-			// Reload holidays
-			await loadHolidays();
-		} catch (err) {
-			console.error('Error deleting holiday:', err);
-			holidaysError = err.response?.data?.detail || 'Failed to delete holiday';
-		} finally {
-			holidaysLoading = false;
-		}
-	}
-	
 	function formatDate(dateStr) {
 		const date = new Date(dateStr + 'T00:00:00');
 		return date.toLocaleDateString('en-IN', { 
@@ -455,13 +330,53 @@
 		});
 	}
 
+	// Holiday card functions
+	async function loadHolidayData() {
+		try {
+			holidayLoading = true;
+			console.log('🏖️ Starting to load holiday data...');
+			
+			// Get today's market status using direct axios call
+			const statusResponse = await axios.get('http://localhost:8000/api/market-time/status');
+			console.log('✅ Today status:', statusResponse.data);
+			
+			// Get tomorrow's date and check if it's a trading day
+			const tomorrow = new Date();
+			tomorrow.setDate(tomorrow.getDate() + 1);
+			const tomorrowStr = tomorrow.toISOString().split('T')[0];
+			console.log('📅 Checking tomorrow:', tomorrowStr);
+			
+			const tomorrowResponse = await axios.get(`http://localhost:8000/api/market-time/is-trading-day?date=${tomorrowStr}`);
+			console.log('✅ Tomorrow status:', tomorrowResponse.data);
+			
+			// Get next trading day
+			const nextTradingResponse = await axios.get('http://localhost:8000/api/market-time/next-trading-day');
+			console.log('✅ Next trading day:', nextTradingResponse.data);
+			
+			// Assign the data
+			holidayData = {
+				today: statusResponse.data,
+				tomorrow: tomorrowResponse.data,
+				nextTrading: nextTradingResponse.data
+			};
+			console.log('✅ Holiday data assigned:', holidayData);
+			holidayError = null;
+		} catch (err) {
+			console.error('❌ Error loading holiday data:', err);
+			holidayError = 'Failed to load: ' + (err.message || 'Unknown error');
+			holidayData = null;
+		} finally {
+			holidayLoading = false;
+			console.log('🏖️ Holiday data load complete');
+		}
+	}
 
 </script>
 
 	<!-- Content -->
 	<div class="px-8 py-6">
 		<!-- First Row: Configuration Cards -->
-		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 					<!-- Kite Connect Configuration -->
 					<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
 						<h2 class="text-xl font-bold mb-4 text-gray-900 flex items-center gap-2">
@@ -569,264 +484,6 @@
 						</div>
 					</form>
 				</div>
-					
-					<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-						<h2 class="text-xl font-bold mb-4 text-gray-900">Market Hours Configuration</h2>
-						
-						{#if marketHoursSuccess}
-							<div class="bg-green-50 border border-green-200 text-green-800 p-4 rounded-lg mb-4">
-								{marketHoursSuccess}
-							</div>
-						{/if}
-						
-						{#if marketHoursError}
-							<div class="bg-red-50 border border-red-200 text-red-800 p-4 rounded-lg mb-4">
-								{marketHoursError}
-							</div>
-						{/if}
-						
-						<form on:submit|preventDefault={saveMarketHours} class="space-y-6">
-						<!-- Market Hours Time Range -->
-						<div class="grid grid-cols-2 gap-4">
-							<div>
-								<label for="market-open-time" class="block text-sm font-medium text-gray-700 mb-1">Market Open Time</label>
-								<input
-									id="market-open-time"
-									type="time"
-									bind:value={marketHours.start_time}
-									class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-								/>
-							</div>
-							<div>
-								<label for="market-close-time" class="block text-sm font-medium text-gray-700 mb-1">Market Close Time</label>
-								<input
-									id="market-close-time"
-									type="time"
-									bind:value={marketHours.end_time}
-									class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-								/>
-							</div>
-						</div>
-						
-						<!-- Trading Days -->
-						<div>
-							<div class="block text-sm font-medium text-gray-700 mb-2">Trading Days</div>
-							<div class="flex flex-wrap gap-2">
-								{#each dayNames as day, index}
-									<button
-										type="button"
-										on:click={() => toggleTradingDay(index)}
-										class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {
-											marketHours.trading_days.includes(index)
-												? 'bg-blue-600 text-white hover:bg-blue-700'
-												: 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-										}"
-									>
-										{day}
-									</button>
-								{/each}
-							</div>
-						</div>
-						
-						<!-- Webhook Configuration -->
-							<div class="border-t pt-6">
-								<div class="mb-3">
-									<div class="font-medium text-gray-900">Real-time Updates (Webhook)</div>
-									<p class="text-sm text-gray-600">Webhook is automatically enabled during market hours for instant order updates</p>
-								</div>
-								<label for="webhook-url" class="block text-sm font-medium text-gray-700 mb-1">Webhook URL (Optional)</label>
-								<input
-									id="webhook-url"
-									type="text"
-									bind:value={marketHours.webhook_url}
-									placeholder="https://your-domain.com/api/webhook/kite-postback"
-									class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-								/>
-							</div>
-							
-							<!-- Polling Configuration -->
-							<div class="border-t pt-6">
-								<div class="mb-3">
-									<div class="font-medium text-gray-900">API Polling (Outside Market Hours)</div>
-									<p class="text-sm text-gray-600">API polling is automatically enabled outside market hours to fetch order status periodically</p>
-								</div>
-							<div>
-								<label for="polling-interval" class="block text-sm font-medium text-gray-700 mb-1">Polling Interval (seconds)</label>
-								<input
-									id="polling-interval"
-									type="number"
-									bind:value={marketHours.polling_interval_seconds}
-									min="60"
-									max="3600"
-									step="60"
-									class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-								/>
-								<p class="text-xs text-gray-600 mt-1">Minimum 60 seconds, recommended 300</p>
-							</div>
-							</div>
-							
-							<div class="flex gap-3 pt-4">
-								<button
-									type="submit"
-									disabled={marketHoursLoading}
-									class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-								>
-									{marketHoursLoading ? 'Saving...' : 'Save Market Hours'}
-								</button>
-							</div>
-						</form>
-					</div>
-					
-					<!-- Holidays Management -->
-					<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-						<div class="flex justify-between items-center mb-4">
-							<h2 class="text-xl font-bold text-gray-900">Holidays Management</h2>
-							<div class="flex gap-3 items-center">
-								<select 
-									bind:value={selectedYear}
-									class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-								>
-									<option value={2024}>2024</option>
-									<option value={2025}>2025</option>
-									<option value={2026}>2026</option>
-								</select>
-								<button
-									on:click={() => showAddHolidayForm = !showAddHolidayForm}
-									class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-								>
-									<span>{showAddHolidayForm ? '✕' : '+'}</span>
-									{showAddHolidayForm ? 'Cancel' : 'Add Holiday'}
-								</button>
-							</div>
-						</div>
-						
-						{#if holidaysSuccess}
-							<div class="bg-green-50 border border-green-200 text-green-800 p-4 rounded-lg mb-4">
-								{holidaysSuccess}
-							</div>
-						{/if}
-						
-						{#if holidaysError}
-							<div class="bg-red-50 border border-red-200 text-red-800 p-4 rounded-lg mb-4">
-								{holidaysError}
-							</div>
-						{/if}
-						
-						<!-- Add Holiday Form -->
-						{#if showAddHolidayForm}
-							<div class="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-200">
-								<h3 class="text-lg font-semibold mb-3 text-gray-900">Add New Holiday</h3>
-								<form on:submit|preventDefault={addHoliday} class="space-y-4">
-									<div class="grid grid-cols-2 gap-4">
-										<div>
-											<label for="holiday-date" class="block text-sm font-medium text-gray-700 mb-1">
-												Date <span class="text-red-500">*</span>
-											</label>
-											<input
-												id="holiday-date"
-												type="date"
-												bind:value={newHoliday.date}
-												required
-												class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-											/>
-										</div>
-										<div>
-											<label for="holiday-name" class="block text-sm font-medium text-gray-700 mb-1">
-												Holiday Name <span class="text-red-500">*</span>
-											</label>
-											<input
-												id="holiday-name"
-												type="text"
-												bind:value={newHoliday.name}
-												placeholder="e.g., Independence Day"
-												required
-												class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-											/>
-										</div>
-									</div>
-									<div>
-										<label for="holiday-description" class="block text-sm font-medium text-gray-700 mb-1">
-											Description (Optional)
-										</label>
-										<input
-											id="holiday-description"
-											type="text"
-											bind:value={newHoliday.description}
-											placeholder="Additional notes about this holiday"
-											class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-										/>
-									</div>
-									<div class="flex gap-3">
-										<button
-											type="submit"
-											disabled={holidaysLoading}
-											class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-										>
-											{holidaysLoading ? 'Adding...' : 'Add Holiday'}
-										</button>
-										<button
-											type="button"
-											on:click={() => {
-												showAddHolidayForm = false;
-												newHoliday = { date: '', name: '', description: '' };
-											}}
-											class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-										>
-											Cancel
-										</button>
-									</div>
-								</form>
-							</div>
-						{/if}
-						
-						<!-- Holidays List -->
-						{#if holidaysLoading}
-							<div class="text-center py-8">
-								<div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-								<p class="text-gray-600 mt-2">Loading holidays...</p>
-							</div>
-						{:else if holidays.length === 0}
-							<div class="text-center py-8 text-gray-500">
-								<svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-								</svg>
-								<p class="mt-2">No holidays found for {selectedYear}</p>
-							</div>
-						{:else}
-							<div class="space-y-2">
-								<div class="text-sm text-gray-600 mb-2">
-									Total: {holidays.length} holiday{holidays.length !== 1 ? 's' : ''}
-								</div>
-								<div class="max-h-96 overflow-y-auto">
-									{#each holidays as holiday}
-										<div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200 mb-2">
-											<div class="flex-1">
-												<div class="flex items-center gap-3">
-													<div class="text-sm font-medium text-gray-500 min-w-[120px]">
-														{formatDate(holiday.date)}
-													</div>
-													<div class="flex-1">
-														<div class="font-semibold text-gray-900">{holiday.name}</div>
-														{#if holiday.description}
-															<div class="text-sm text-gray-600">{holiday.description}</div>
-														{/if}
-													</div>
-												</div>
-											</div>
-											<button
-												on:click={() => deleteHoliday(holiday.date)}
-												disabled={holidaysLoading}
-												class="ml-4 px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 text-sm"
-												title="Delete holiday"
-											>
-												🗑️ Delete
-											</button>
-										</div>
-									{/each}
-								</div>
-							</div>
-						{/if}
-					</div>
 				
 				<!-- Second Row: Instrument Data and Fund Cards -->
 				<div class="grid grid-cols-1 gap-6">
@@ -876,6 +533,62 @@
 									<p class="text-sm font-medium text-gray-600">Last Downloaded</p>
 									<p class="text-sm text-gray-700">{formatDateTime(instrumentStatus.last_download)}</p>
 								</div>
+							</div>
+						{/if}
+					</div>
+					
+					<!-- Holiday Card -->
+					<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+						<h2 class="text-lg font-bold text-gray-900 mb-4">🏖️ Holiday</h2>
+						
+						{#if holidayError}
+							<div class="text-center py-4">
+								<p class="text-sm text-red-600">{holidayError}</p>
+							</div>
+						{:else if holidayData}
+							<div class="space-y-3">
+								<!-- Today's market status -->
+								<div class="flex items-center justify-between">
+									<span class="text-sm font-medium text-gray-600">Market Status Today:</span>
+									{#if holidayData.today.is_trading_day}
+										<span class="text-sm font-bold text-green-600">
+											Market open {holidayData.today.market_open_time} — {holidayData.today.market_close_time}
+										</span>
+									{:else}
+										<span class="text-sm font-bold text-red-600">Market closed today</span>
+									{/if}
+								</div>
+								
+								<!-- Next session -->
+								<div class="flex items-center justify-between">
+									<span class="text-sm font-medium text-gray-600">Next Session:</span>
+									<span class="text-sm font-bold text-gray-900">
+										{new Date(holidayData.nextTrading.next_trading_day).toLocaleDateString('en-IN', { 
+											day: '2-digit',
+											month: '2-digit',
+											year: 'numeric',
+											weekday: 'short'
+										})}
+									</span>
+								</div>
+								
+								<!-- Tomorrow's status (only if closed) -->
+								{#if !holidayData.tomorrow.is_trading_day}
+									<div class="flex items-center justify-between">
+										<span class="text-sm font-medium text-gray-600">Tomorrow:</span>
+										<span class="text-sm font-bold text-orange-600">
+											{#if holidayData.tomorrow.is_weekend}
+												Weekend close
+											{:else}
+												Holiday
+											{/if}
+										</span>
+									</div>
+								{/if}
+							</div>
+						{:else}
+							<div class="text-center py-8">
+								<p class="text-gray-500">Loading market data...</p>
 							</div>
 						{/if}
 					</div>

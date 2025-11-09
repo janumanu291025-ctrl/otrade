@@ -157,7 +157,7 @@ def migrate_all_tables():
     
     # Import all models to ensure they're registered with Base
     from backend.models import (
-        TradingConfig, BrokerConfig, Instrument, MarketHours,
+        TradingConfig, BrokerConfig, Instrument,
         PaperTrade, PaperTradingMarketData, PaperTradingAlert,
         LiveTrade, LiveTradingMarketData, LiveTradingAlert, LiveTradingSignal,
         HistoricalData, InstrumentDownloadLog, SchemaMigration, LiveTradingState
@@ -168,7 +168,6 @@ def migrate_all_tables():
         TradingConfig,
         BrokerConfig,
         Instrument,
-        MarketHours,
         PaperTrade,
         PaperTradingMarketData,
         PaperTradingAlert,
@@ -217,14 +216,14 @@ def verify_database_schema():
     logger.info("Verifying database schema...")
     
     from backend.models import (
-        TradingConfig, BrokerConfig, Instrument, MarketHours,
+        TradingConfig, BrokerConfig, Instrument,
         PaperTrade, PaperTradingMarketData, PaperTradingAlert,
         LiveTrade, LiveTradingMarketData, LiveTradingAlert, LiveTradingSignal,
         HistoricalData
     )
     
     models = [
-        TradingConfig, BrokerConfig, Instrument, MarketHours,
+        TradingConfig, BrokerConfig, Instrument,
         PaperTrade, PaperTradingMarketData, PaperTradingAlert,
         LiveTrade, LiveTradingMarketData, LiveTradingAlert, LiveTradingSignal,
         HistoricalData

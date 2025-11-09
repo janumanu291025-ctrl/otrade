@@ -21,6 +21,10 @@ numba==0.59.0  # Updated for Python 3.12 compatibility
 # ta-lib==0.4.28  # Removed - requires system libraries, not essential for core functionality
 python-dateutil==2.8.2
 
+# Exchange Calendars for market hours and holidays
+exchange-calendars==4.11.2
+pytz==2024.1
+
 # Environment and Config
 python-dotenv==1.0.0
 pydantic==2.5.0

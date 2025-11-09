@@ -297,22 +297,16 @@ class HistoricalDataService:
         Returns:
             datetime: A recent trading day
         """
-        from backend.services.market_time import is_trading_day
-        from backend.database import get_db
+        from backend.services.market_calendar import is_trading_day
         
-        # Get db session
-        db = next(get_db())
-        try:
-            now = datetime.now(IST)
-            target_date = now - timedelta(days=days_back)
-            
-            # Find previous trading day
-            while not is_trading_day(db, target_date):
-                target_date = target_date - timedelta(days=1)
-            
-            return target_date
-        finally:
-            db.close()
+        now = datetime.now(IST)
+        target_date = now - timedelta(days=days_back)
+        
+        # Find previous trading day
+        while not is_trading_day(target_date):
+            target_date = target_date - timedelta(days=1)
+        
+        return target_date
     
     def prepare_simulation_data(
         self,

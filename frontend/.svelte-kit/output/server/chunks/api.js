@@ -26,9 +26,6 @@ const brokerAPI = {
   getStatus: (brokerType) => api.get(`/broker/status/${brokerType}`),
   getEnvConfig: (brokerType) => api.get(`/broker/env-config/${brokerType}`),
   updateEnvConfig: (brokerType, data) => api.post(`/broker/env-config/${brokerType}`, data),
-  getOrders: (brokerType) => api.get(`/broker/orders/${brokerType}`),
-  getTrades: (brokerType) => api.get(`/broker/trades/${brokerType}`),
-  getPositions: (brokerType) => api.get(`/broker/positions/${brokerType}`),
   getNifty50: () => api.get("/broker/nifty50")
 };
 export {

@@ -154,14 +154,14 @@ async def get_websocket_status(db: Session = Depends(get_db)):
 @router.post("/ws/reconnect")
 async def reconnect_websocket(db: Session = Depends(get_db)):
     """Reconnect WebSocket for market data (handled by middleware based on market hours)"""
-    from backend.services.market_time import is_webhook_connection_time
+    from backend.services.market_calendar import is_market_open
     from backend.services.middleware_helper import get_middleware
     
     # Check if it's market hours
-    if not is_webhook_connection_time(db):
+    if not is_market_open():
         return {
             "status": "error",
-            "message": "WebSocket connection only available during market hours (9:00 AM - 3:30 PM)"
+            "message": "WebSocket connection only available during market hours (9:15 AM - 3:30 PM)"
         }
     
     try:

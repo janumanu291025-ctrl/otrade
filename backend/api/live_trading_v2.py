@@ -302,7 +302,7 @@ async def get_live_trading_status(
     Note: Response is cached for 2 seconds to optimize performance
     During off-market hours, fetches data from middleware with adaptive polling
     """
-    from backend.services.market_time import get_market_status
+    from backend.services.market_calendar import get_market_status
     from backend.models import BrokerConfig
     
     global _engine_instance
@@ -312,7 +312,7 @@ async def get_live_trading_status(
         middleware = get_middleware_instance(db)
         
         # Check market status
-        market_status = get_market_status(db)
+        market_status = get_market_status()
         is_market_open = market_status.get("is_open", False)
         
         if not _engine_instance:
@@ -1020,61 +1020,21 @@ async def get_live_positions(
     """
     Get currently open positions with live P&L
     
+    NOTE: For off-market positions, use GET /api/portfolio/positions instead
+    This endpoint is for live trading engine positions only
+    
     Returns:
         List of open positions with current prices and P&L
-    Fetches from middleware when engine is not running
     """
-    from backend.services.market_time import get_market_status
-    from backend.models import BrokerConfig
-    
     global _engine_instance
     
     try:
-        # Get middleware instance
-        middleware = get_middleware_instance(db)
-        
-        # Check market status
-        market_status = get_market_status(db)
-        is_market_open = market_status.get("is_open", False)
-        
         if not _engine_instance:
-            # Engine not running - fetch from middleware (handles market-time-aware data fetching)
-            broker_config = db.query(BrokerConfig).filter(
-                BrokerConfig.broker_type == "kite",
-                BrokerConfig.is_active == True
-            ).first()
-            
-            if broker_config and broker_config.access_token:
-                try:
-                    positions = middleware.get_positions(use_cache=True)
-                    net_positions = positions.get("net", [])
-                    
-                    # Filter only positions with non-zero quantity
-                    active_positions = [p for p in net_positions if p.get("quantity", 0) != 0]
-                    
-                    return {
-                        "positions": [
-                            {
-                                "instrument": p.get("tradingsymbol"),
-                                "exchange": p.get("exchange"),
-                                "quantity": p.get("quantity"),
-                                "buy_price": round(p.get("buy_price", 0), 2),
-                                "last_price": round(p.get("last_price", 0), 2),
-                                "pnl": round(p.get("pnl", 0), 2),
-                                "product": p.get("product"),
-                                "value": round(p.get("value", 0), 2),
-                            }
-                            for p in active_positions
-                        ],
-                        "count": len(active_positions),
-                        "total_pnl": round(sum(p.get("pnl", 0) for p in active_positions), 2),
-                        "source": "middleware"
-                    }
-                except Exception as e:
-                    logger.error(f"Error fetching positions from middleware: {e}")
-                    raise HTTPException(status_code=500, detail=f"Failed to fetch positions: {str(e)}")
-            
-            raise HTTPException(status_code=401, detail="Broker not authenticated")
+            # Engine not running - redirect to portfolio API
+            raise HTTPException(
+                status_code=404,
+                detail="Live trading engine not running. Use GET /api/portfolio/positions for broker positions."
+            )
         
         # Get open positions
         positions = db.query(LiveTrade).filter(
@@ -1131,7 +1091,7 @@ async def get_live_orders(
         List of orders with status and details
     During off-market hours, fetches from middleware with adaptive polling
     """
-    from backend.services.market_time import get_market_status
+    from backend.services.market_calendar import get_market_status
     from backend.models import BrokerConfig
     
     global _engine_instance
@@ -1141,7 +1101,7 @@ async def get_live_orders(
         middleware = get_middleware_instance(db)
         
         # Check market status
-        market_status = get_market_status(db)
+        market_status = get_market_status()
         is_market_open = market_status.get("is_open", False)
         
         # Fetch from middleware (works both when engine is running or not during off-market)
@@ -1573,7 +1533,7 @@ async def get_market_data(
         
     Note: This endpoint works even when live trading engine is stopped
     """
-    from backend.services.market_time import get_market_status
+    from backend.services.market_calendar import get_market_status
     from backend.models import BrokerConfig
     
     global _engine_instance
@@ -1583,7 +1543,7 @@ async def get_market_data(
         middleware = get_middleware_instance(db)
         
         # Get market status
-        market_status = get_market_status(db)
+        market_status = get_market_status()
         
         # Get broker config to validate authentication
         broker_config = db.query(BrokerConfig).filter(
@@ -1926,4 +1886,173 @@ async def get_candles(
         )
     except Exception as e:
         logger.error(f"Error fetching candle data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chart-data")
+async def get_chart_data(
+    timeframe: str = "15minute",  # "minute" or "15minute"
+    limit: int = 100,
+    db: Session = Depends(get_db)
+) -> Dict:
+    """
+    Get chart data formatted for frontend charts
+    
+    Returns data in the format expected by CandlestickChart and AdvancedChart components:
+    - candles: Array of OHLC data with timestamps
+    - ma7: Moving average 7 data points
+    - ma20: Moving average 20 data points  
+    - bb_upper: Bollinger Band upper
+    - bb_lower: Bollinger Band lower
+    """
+    from backend.models import BrokerConfig
+    from backend.services.trading_logic_service import TradingLogicService
+    from collections import deque
+    
+    try:
+        # Get middleware instance
+        middleware = get_middleware_instance(db)
+        
+        # Get broker config to validate authentication
+        broker_config = db.query(BrokerConfig).filter(
+            BrokerConfig.broker_type == "kite",
+            BrokerConfig.is_active == True
+        ).first()
+        
+        if not broker_config or not broker_config.access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Broker not authenticated"
+            )
+        
+        # NIFTY 50 token
+        nifty_token = 256265
+        
+        # Calculate time range
+        now = datetime.now()
+        
+        # Go back to last trading day if it's weekend
+        while now.weekday() > 4:  # Saturday=5, Sunday=6
+            now -= timedelta(days=1)
+        
+        # If it's before market open, go back to previous day
+        if now.hour < 9 or (now.hour == 9 and now.minute < 15):
+            now -= timedelta(days=1)
+            while now.weekday() > 4:
+                now -= timedelta(days=1)
+        
+        # Calculate time range based on interval
+        if timeframe == "minute":
+            # For 1-minute candles, fetch last trading day's data
+            end_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            start_time = now.replace(hour=9, minute=15, second=0, microsecond=0)
+        else:  # 15minute and other timeframes
+            # For other timeframes, fetch appropriate range
+            end_time = now
+            start_time = end_time - timedelta(days=2)
+        
+        # Fetch historical data via middleware
+        candles = middleware.get_historical_data(
+            instrument_token=nifty_token,
+            from_date=start_time,
+            to_date=end_time,
+            interval=timeframe
+        )
+        
+        if not candles:
+            return {
+                "candles": [],
+                "ma7": [],
+                "ma20": [],
+                "bb_upper": [],
+                "bb_lower": []
+            }
+        
+        # Limit the number of candles returned
+        candles = candles[-limit:] if len(candles) > limit else candles
+        
+        # Normalize candle structure
+        normalized_candles = []
+        for candle in candles:
+            normalized_candles.append({
+                "timestamp": candle.get("date"),
+                "open": candle.get("open"),
+                "high": candle.get("high"),
+                "low": candle.get("low"),
+                "close": candle.get("close"),
+                "volume": candle.get("volume", 0)
+            })
+        
+        # Calculate indicators
+        trading_logic = TradingLogicService()
+        ma7_data = []
+        ma20_data = []
+        bb_upper_data = []
+        bb_lower_data = []
+        
+        if len(normalized_candles) >= 20:
+            # Calculate indicators for each candle position
+            for i in range(20, len(normalized_candles) + 1):
+                candle_subset = deque(normalized_candles[:i])
+                ind = trading_logic.calculate_indicators_from_deque(candle_subset)
+                if ind:
+                    timestamp = normalized_candles[i-1].get("date")
+                    if ind.get("ma7") is not None:
+                        ma7_data.append({
+                            "timestamp": timestamp,
+                            "value": round(ind.get("ma7"), 2)
+                        })
+                    if ind.get("ma20") is not None:
+                        ma20_data.append({
+                            "timestamp": timestamp,
+                            "value": round(ind.get("ma20"), 2)
+                        })
+                    if ind.get("ubb") is not None:
+                        bb_upper_data.append({
+                            "timestamp": timestamp,
+                            "value": round(ind.get("ubb"), 2)
+                        })
+                    if ind.get("lbb") is not None:
+                        bb_lower_data.append({
+                            "timestamp": timestamp,
+                            "value": round(ind.get("lbb"), 2)
+                        })
+        
+        # Format candles for response (convert datetime to timestamp)
+        formatted_candles = []
+        for candle in normalized_candles:
+            date_obj = candle.get("date")
+            if isinstance(date_obj, datetime):
+                timestamp = int(date_obj.timestamp() * 1000)  # Convert to milliseconds
+            else:
+                timestamp = date_obj
+            
+            formatted_candles.append({
+                "timestamp": timestamp,
+                "open": round(candle.get("open"), 2),
+                "high": round(candle.get("high"), 2),
+                "low": round(candle.get("low"), 2),
+                "close": round(candle.get("close"), 2)
+            })
+        
+        # Format indicator data
+        def format_indicator_data(data_list):
+            return [
+                {
+                    "timestamp": int(item["timestamp"].timestamp() * 1000) if isinstance(item["timestamp"], datetime) else item["timestamp"],
+                    "value": item["value"]
+                }
+                for item in data_list
+            ]
+        
+        return {
+            "candles": formatted_candles,
+            "ma7": format_indicator_data(ma7_data),
+            "ma20": format_indicator_data(ma20_data),
+            "bb_upper": format_indicator_data(bb_upper_data),
+            "bb_lower": format_indicator_data(bb_lower_data)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching chart data: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.database import init_db, get_db
 from backend.api import (
-    broker, webhook, 
+    broker, webhook, orders,
     websocket, paper_trading, config, middleware
 )
 from backend.api import market_time
@@ -186,6 +186,7 @@ app.add_middleware(
 # Include routers
 app.include_router(config.router)
 app.include_router(broker.router)
+app.include_router(orders.router)  # Consolidated order management API
 app.include_router(websocket.router)
 app.include_router(market_time.router)
 app.include_router(middleware.router)
@@ -193,12 +194,13 @@ app.include_router(webhook.router)
 app.include_router(paper_trading.router)
 app.include_router(live_trading_v2.router)  # Live Trading V2 API
 
-# Portfolio, positions, and orders routers are temporarily disabled
-# due to missing models - they need to be updated to use the current schema
-# from backend.api import portfolio, positions, orders
-# app.include_router(portfolio.router)
+# Portfolio router - Consolidated positions and holdings API
+from backend.api import portfolio
+app.include_router(portfolio.router)
+
+# Positions router disabled - use consolidated portfolio API instead
+# from backend.api import positions
 # app.include_router(positions.router)
-# app.include_router(orders.router)
 
 
 @app.on_event("startup")
@@ -226,7 +228,7 @@ async def startup_event():
     # Initialize unified broker middleware (market-time-aware data service)
     db = next(get_db())
     try:
-        from backend.services.market_time import is_webhook_connection_time
+        from backend.services.market_calendar import is_market_open
         from backend.services.unified_broker_middleware import get_unified_broker_middleware
         from backend.broker.factory import get_broker_client
         

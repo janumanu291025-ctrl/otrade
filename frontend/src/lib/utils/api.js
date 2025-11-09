@@ -33,10 +33,18 @@ export const brokerAPI = {
     getStatus: (brokerType) => api.get(`/broker/status/${brokerType}`),
     getEnvConfig: (brokerType) => api.get(`/broker/env-config/${brokerType}`),
     updateEnvConfig: (brokerType, data) => api.post(`/broker/env-config/${brokerType}`, data),
-    getOrders: (brokerType) => api.get(`/broker/orders/${brokerType}`),
-    getTrades: (brokerType) => api.get(`/broker/trades/${brokerType}`),
-    getPositions: (brokerType) => api.get(`/broker/positions/${brokerType}`),
     getNifty50: () => api.get('/broker/nifty50')
+};
+
+// Portfolio API - Positions and fund management
+export const portfolioAPI = {
+    // Get short-term positions (derivatives and intraday equity)
+    getPositions: () => api.get('/portfolio/positions'),
+    
+    // Fund management
+    getFund: () => api.get('/portfolio/fund'),
+    getFundSummary: (brokerType = 'kite') => api.get('/portfolio/fund/summary', { params: { broker_type: brokerType } }),
+    syncFund: (brokerType = 'kite') => api.post('/portfolio/fund/sync', null, { params: { broker_type: brokerType } })
 };
 
 // Unified Trading Configuration API (replaces old strategy/orders/positions APIs)
@@ -52,12 +60,9 @@ export const configAPI = {
 
 // Market Hours API
 export const marketHoursAPI = {
-    getConfig: () => api.get('/market-time/config'),
-    updateConfig: (data) => api.put('/market-time/config', data),
     getStatus: () => api.get('/market-time/status'),
-    getHolidays: (year = null) => api.get('/market-time/holidays', { params: year ? { year } : {} }),
-    addHoliday: (data) => api.post('/market-time/holidays', data),
-    removeHoliday: (date) => api.delete(`/market-time/holidays/${date}`)
+    isTradingDay: (date = null) => api.get('/market-time/is-trading-day', { params: date ? { date } : {} }),
+    getNextTradingDay: (fromDate = null) => api.get('/market-time/next-trading-day', { params: fromDate ? { from_date: fromDate } : {} })
 };
 
 // Paper Trading API
@@ -111,6 +116,43 @@ export const liveTradingAPI = {
     // Configuration
     suspendCE: (configId, suspend) => api.post(`/live-trading/configs/${configId}/suspend-ce`, suspend),
     suspendPE: (configId, suspend) => api.post(`/live-trading/configs/${configId}/suspend-pe`, suspend)
+};
+
+// Live Trading V2 API
+export const liveTradingV2API = {
+    // Engine control
+    start: (configId, contractExpiry = null) => 
+        api.post('/live-trading-v2/start', null, { 
+            params: { 
+                config_id: configId, 
+                ...(contractExpiry && { contract_expiry: contractExpiry })
+            } 
+        }),
+    stop: () => api.post('/live-trading-v2/stop'),
+    pause: () => api.post('/live-trading-v2/pause'),
+    resume: () => api.post('/live-trading-v2/resume'),
+    getStatus: () => api.get('/live-trading-v2/status'),
+    
+    // Trading operations
+    suspendCE: (suspend) => api.post('/live-trading-v2/suspend-ce', { suspend }),
+    suspendPE: (suspend) => api.post('/live-trading-v2/suspend-pe', { suspend }),
+    closePosition: (tradeId, reason = 'manual_close') => 
+        api.post('/live-trading-v2/close-position', { trade_id: tradeId, reason }),
+    reconcile: () => api.post('/live-trading-v2/reconcile'),
+    
+    // Data fetching
+    getTrades: (params = {}) => api.get('/live-trading-v2/trades', { params }),
+    getPositions: () => api.get('/live-trading-v2/positions'),
+    getOrders: () => api.get('/live-trading-v2/orders'),
+    getAlerts: (params = {}) => api.get('/live-trading-v2/alerts', { params }),
+    getSignals: (params = {}) => api.get('/live-trading-v2/signals', { params }),
+    getInstruments: (configId) => api.get(`/live-trading-v2/instruments/${configId}`),
+    getMarketData: () => api.get('/live-trading-v2/market-data'),
+    getCandles: (params = {}) => api.get('/live-trading-v2/candles', { params }),
+    getChartData: (params = {}) => api.get('/live-trading-v2/chart-data', { params }),
+    
+    // Performance
+    getPerformance: () => api.get('/live-trading-v2/performance')
 };
 
 export default api;

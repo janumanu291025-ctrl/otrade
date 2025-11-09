@@ -163,48 +163,6 @@ class SchemaMigration(Base):
     error_message = Column(Text, nullable=True)
 
 
-class MarketHours(Base):
-    __tablename__ = "market_hours"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    
-    # Market hours configuration
-    enabled = Column(Boolean, default=True)
-    start_time = Column(String(5), default="09:15")  # Market open time (HH:MM format)
-    end_time = Column(String(5), default="15:30")    # Market close time (HH:MM format)
-    
-    # Additional time windows for trading operations
-    webhook_start_time = Column(String(5), default="09:00")  # Webhook connection starts 15 min before market
-    order_placement_start_time = Column(String(5), default="09:20")  # Order placement window start
-    order_placement_end_time = Column(String(5), default="15:15")    # Order placement window end
-    square_off_time = Column(String(5), default="15:20")            # Square-off time (close positions)
-    
-    # Trading days (JSON array: [0=Monday, 1=Tuesday, ..., 6=Sunday])
-    trading_days = Column(JSON, default=[0, 1, 2, 3, 4])  # Monday to Friday
-    
-    # Webhook configuration for real-time order updates
-    webhook_enabled = Column(Boolean, default=True)
-    webhook_url = Column(String(500), nullable=True)
-    
-    # API polling configuration (outside market hours)
-    polling_enabled = Column(Boolean, default=True)
-    polling_interval_seconds = Column(Integer, default=300)  # 5 minutes
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class Holiday(Base):
-    """Trading holidays - market closed on these dates"""
-    __tablename__ = "holidays"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    date = Column(String(10), unique=True, nullable=False, index=True)  # YYYY-MM-DD format
-    name = Column(String(100), nullable=False)
-    description = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
 # ============================================================================
 # PAPER TRADING MODELS (using unified TradingConfig)
 # ============================================================================

@@ -8,7 +8,7 @@ from backend.schemas import BrokerConfigCreate, BrokerConfigUpdate, BrokerConfig
 from backend.broker.kite.client import KiteBroker
 from backend.broker.upstox.client import UpstoxBroker
 from backend.config import settings
-from backend.services.market_time import is_market_open, get_market_time_service
+from backend.services.market_calendar import is_market_open, get_market_calendar
 from backend.services.middleware_helper import get_middleware_instance
 from datetime import datetime, timedelta, time
 import logging
@@ -104,9 +104,9 @@ def get_broker_status_by_type(broker_type: str, db: Session = Depends(get_db)):
                 connected = False
     
     # Check market hours
-    market_active = is_market_open(db)
-    market_service = get_market_time_service(db)
-    market_config = market_service.get_config()
+    market_active = is_market_open()
+    market_service = get_market_calendar()
+    market_times = market_service.get_market_open_close()
     
     # Calculate seconds to market close
     seconds_to_close = None
@@ -150,8 +150,8 @@ def get_broker_status_by_type(broker_type: str, db: Session = Depends(get_db)):
         "remark": remark,
         "seconds_to_close": seconds_to_close,
         "market_hours": {
-            "start_time": market_config.start_time,
-            "end_time": market_config.end_time
+            "start_time": market_times['open'].strftime('%H:%M') if market_times['open'] else "09:15",
+            "end_time": market_times['close'].strftime('%H:%M') if market_times['close'] else "15:30"
         }
     }
 
@@ -630,65 +630,13 @@ def update_env_config(broker_type: str, config_data: dict):
     }
 
 
-@router.get("/orders/{broker_type}")
-def get_broker_orders(broker_type: str, db: Session = Depends(get_db)):
-    """Get all orders from broker for the day (uses middleware)"""
-    from backend.services.middleware_helper import get_middleware
-    
-    config = db.query(BrokerConfig).filter(
-        BrokerConfig.broker_type == broker_type
-    ).first()
-    
-    if not config or not config.access_token:
-        raise HTTPException(status_code=401, detail="Not authenticated with broker")
-    
-    try:
-        middleware = get_middleware(db)
-        orders = middleware.get_orders(use_cache=False)
-        return orders
-    except Exception as e:
-        logger.error(f"Error getting orders: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/trades/{broker_type}")
-def get_broker_trades(broker_type: str, db: Session = Depends(get_db)):
-    """Get all executed trades from broker for the day"""
-    config = db.query(BrokerConfig).filter(
-        BrokerConfig.broker_type == broker_type
-    ).first()
-    
-    if not config or not config.access_token:
-        raise HTTPException(status_code=401, detail="Not authenticated with broker")
-    
-    try:
-        broker = get_broker_client(config)
-        trades = broker.get_trades()
-        return trades
-    except Exception as e:
-        logger.error(f"Error getting trades: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/positions/{broker_type}")
-def get_broker_positions(broker_type: str, db: Session = Depends(get_db)):
-    """Get all positions from broker (uses middleware)"""
-    from backend.services.middleware_helper import get_middleware
-    
-    config = db.query(BrokerConfig).filter(
-        BrokerConfig.broker_type == broker_type
-    ).first()
-    
-    if not config or not config.access_token:
-        raise HTTPException(status_code=401, detail="Not authenticated with broker")
-    
-    try:
-        middleware = get_middleware(db)
-        positions = middleware.get_positions(use_cache=True)
-        return positions
-    except Exception as e:
-        logger.error(f"Error getting positions: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+# ========== DEPRECATED: Order/Trade/Position endpoints moved to consolidated APIs ==========
+# GET /api/broker/orders/{broker_type} -> Use GET /api/orders instead
+# POST /api/broker/orders/place -> Use POST /api/orders/{variety} instead
+# PUT /api/broker/orders/{variety}/{order_id} -> Use PUT /api/orders/{variety}/{order_id} instead
+# DELETE /api/broker/orders/{variety}/{order_id} -> Use DELETE /api/orders/{variety}/{order_id} instead
+# GET /api/broker/trades/{broker_type} -> Use GET /api/orders instead (orders include executed trades)
+# GET /api/broker/positions/{broker_type} -> Use GET /api/portfolio/positions instead (short-term positions only)
 
 
 @router.get("/instruments/status/{broker_type}")
@@ -961,92 +909,10 @@ def get_market_quote(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/orders/{variety}/{order_id}")
-def cancel_order(
-    variety: str,
-    order_id: str,
-    db: Session = Depends(get_db)
-):
-    """Cancel an open or pending order
-    
-    Args:
-        variety: Order variety (regular, amo, co, iceberg, auction)
-        order_id: Unique order ID to cancel
-    """
-    # Get active broker config
-    config = db.query(BrokerConfig).filter(
-        BrokerConfig.is_active == True
-    ).first()
-    
-    if not config or not config.access_token:
-        raise HTTPException(status_code=401, detail="Not authenticated with broker")
-    
-    try:
-        # Use middleware to cancel order
-        middleware = get_middleware_instance(db)
-        result = middleware.cancel_order(order_id=order_id, variety=variety)
-        return {"status": "success", "data": result}
-    except Exception as e:
-        logger.error(f"Error cancelling order: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/orders/{variety}/{order_id}")
-def modify_order(
-    variety: str,
-    order_id: str,
-    order_type: str = None,
-    quantity: int = None,
-    price: float = None,
-    trigger_price: float = None,
-    disclosed_quantity: int = None,
-    validity: str = None,
-    db: Session = Depends(get_db)
-):
-    """Modify an open or pending order
-    
-    Args:
-        variety: Order variety (regular, amo, co, iceberg, auction)
-        order_id: Unique order ID to modify
-        order_type: Order type (MARKET, LIMIT, SL, SL-M)
-        quantity: New quantity
-        price: New limit price (for LIMIT orders)
-        trigger_price: New trigger price (for SL orders)
-        disclosed_quantity: New disclosed quantity
-        validity: Order validity (DAY, IOC, TTL)
-    """
-    # Get active broker config
-    config = db.query(BrokerConfig).filter(
-        BrokerConfig.is_active == True
-    ).first()
-    
-    if not config or not config.access_token:
-        raise HTTPException(status_code=401, detail="Not authenticated with broker")
-    
-    try:
-        # Use middleware to modify order
-        middleware = get_middleware_instance(db)
-        
-        # Build params dict with only provided values
-        params = {}
-        if order_type is not None:
-            params['order_type'] = order_type
-        if quantity is not None:
-            params['quantity'] = quantity
-        if price is not None:
-            params['price'] = price
-        if trigger_price is not None:
-            params['trigger_price'] = trigger_price
-        if disclosed_quantity is not None:
-            params['disclosed_quantity'] = disclosed_quantity
-        if validity is not None:
-            params['validity'] = validity
-        
-        result = middleware.modify_order(order_id=order_id, variety=variety, **params)
-        return {"status": "success", "data": result}
-    except Exception as e:
-        logger.error(f"Error modifying order: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 @router.post("/positions/close")
@@ -1126,91 +992,5 @@ def close_position(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/orders/place")
-def place_manual_order(
-    tradingsymbol: str,
-    exchange: str,
-    transaction_type: str,
-    quantity: int,
-    order_type: str,
-    product: str = "MIS",
-    variety: str = "regular",
-    price: float = None,
-    trigger_price: float = None,
-    validity: str = "DAY",
-    tag: str = None,
-    db: Session = Depends(get_db)
-):
-    """Place a manual order
-    
-    This endpoint allows placing orders manually with full control over all parameters.
-    
-    Args:
-        tradingsymbol: Trading symbol (e.g., "NIFTY2411118000CE")
-        exchange: Exchange code (NSE, BSE, NFO, BFO, CDS, MCX, BCD)
-        transaction_type: BUY or SELL
-        quantity: Quantity to transact
-        order_type: MARKET, LIMIT, SL, SL-M
-        product: CNC (Cash), NRML (Normal), MIS (Intraday), MTF (Margin)
-        variety: regular, amo, co, iceberg, auction
-        price: Limit price (required for LIMIT orders)
-        trigger_price: Trigger price (required for SL/SL-M orders)
-        validity: DAY, IOC, TTL
-        tag: Optional tag to identify the order
-    
-    Returns:
-        {"status": "success", "order_id": "...", "message": "..."}
-    """
-    # Get active broker config
-    config = db.query(BrokerConfig).filter(
-        BrokerConfig.is_active == True
-    ).first()
-    
-    if not config or not config.access_token:
-        raise HTTPException(status_code=401, detail="Not authenticated with broker")
-    
-    # Validate required fields
-    if order_type == "LIMIT" and price is None:
-        raise HTTPException(status_code=400, detail="Price is required for LIMIT orders")
-    
-    if order_type in ["SL", "SL-M"] and trigger_price is None:
-        raise HTTPException(status_code=400, detail="Trigger price is required for SL/SL-M orders")
-    
-    try:
-        # Use middleware to place order
-        middleware = get_middleware_instance(db)
-        
-        # Build order parameters
-        order_params = {
-            'tradingsymbol': tradingsymbol,
-            'exchange': exchange,
-            'transaction_type': transaction_type.upper(),
-            'quantity': quantity,
-            'order_type': order_type.upper(),
-            'product': product.upper(),
-            'variety': variety,
-            'validity': validity.upper()
-        }
-        
-        # Add optional parameters
-        if price is not None:
-            order_params['price'] = price
-        if trigger_price is not None:
-            order_params['trigger_price'] = trigger_price
-        if tag:
-            order_params['tag'] = tag
-        
-        # Place the order via middleware
-        result = middleware.place_order(**order_params)
-        
-        logger.info(f"Manual order placed: {transaction_type} {quantity} {tradingsymbol} @ {price or 'MARKET'}")
-        
-        return {
-            "status": "success",
-            "data": result,
-            "message": f"Order placed successfully: {transaction_type} {quantity} {tradingsymbol}"
-        }
-    except Exception as e:
-        logger.error(f"Error placing manual order: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+
 

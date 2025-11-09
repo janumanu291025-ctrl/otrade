@@ -784,18 +784,12 @@ class BrokerDataService:
             logger.warning("WebSocket not available in backtest mode")
             return
         
-        # Check if it's webhook connection time before connecting
-        from backend.database import SessionLocal
-        from backend.services.market_time import is_webhook_connection_time
+        # Check if market is open before connecting
+        from backend.services.market_calendar import is_market_open
         
-        db = SessionLocal()
-        try:
-            webhook_time_active = is_webhook_connection_time(db)
-            if not webhook_time_active:
-                logger.info("Outside webhook connection hours (9:00 AM - 3:30 PM) - WebSocket connection deferred")
-                return
-        finally:
-            db.close()
+        if not is_market_open():
+            logger.info("Market is closed - WebSocket connection deferred")
+            return
         
         try:
             self.broker.connect_websocket(

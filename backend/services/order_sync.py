@@ -10,11 +10,8 @@ from sqlalchemy import and_
 
 from backend.models import Order
 from backend.broker.base import BaseBroker
-from backend.services.market_time import (
+from backend.services.market_calendar import (
     is_market_open,
-    should_use_webhook,
-    should_use_polling,
-    get_polling_interval,
     get_market_status
 )
 
@@ -315,21 +312,16 @@ class OrderSyncService:
         Determine the sync strategy based on market hours
         Returns dict with sync method and interval information
         """
-        market_open = is_market_open(self.db)
-        use_webhook = should_use_webhook(self.db)
-        use_polling = should_use_polling(self.db)
+        market_open = is_market_open()
         
-        if market_open and use_webhook:
+        if market_open:
             sync_method = "webhook"
-            sync_interval = None  # Real-time via webhook
-        elif use_polling:
-            sync_method = "polling"
-            sync_interval = get_polling_interval(self.db)
+            sync_interval = None  # Real-time via webhook during market hours
         else:
             sync_method = "manual"
             sync_interval = None
         
-        market_status = get_market_status(self.db)
+        market_status = get_market_status()
         
         return {
             "method": sync_method,  # Changed from sync_method to method

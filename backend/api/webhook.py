@@ -194,9 +194,9 @@ async def kite_postback(
 @router.get("/status")
 async def webhook_status(db: Session = Depends(get_db)):
     """Get webhook configuration status"""
-    from backend.services.market_time import get_market_status
+    from backend.services.market_calendar import get_market_status
     
-    market_status = get_market_status(db)
+    market_status = get_market_status()
     
     broker_config = db.query(BrokerConfig).filter(
         BrokerConfig.is_active == True

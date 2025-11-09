@@ -13,6 +13,10 @@
     "file": "chunks/api.js",
     "name": "api"
   },
+  "_app.js": {
+    "file": "_app/immutable/assets/app.DnVKJAVd.css",
+    "src": "_app.js"
+  },
   "_broker.js": {
     "file": "chunks/broker.js",
     "name": "broker",
@@ -60,13 +64,6 @@
     "file": "chunks/ssr2.js",
     "name": "ssr"
   },
-  "_state.svelte.js": {
-    "file": "chunks/state.svelte.js",
-    "name": "state.svelte",
-    "imports": [
-      "_ssr2.js"
-    ]
-  },
   "_stores.js": {
     "file": "chunks/stores.js",
     "name": "stores",
@@ -74,29 +71,12 @@
       "_ssr.js",
       "_exports.js",
       "_utils.js",
-      "_state.svelte.js"
-    ]
-  },
-  "_stores2.js": {
-    "file": "chunks/stores2.js",
-    "name": "stores",
-    "imports": [
-      "_index.js"
+      "_ssr2.js"
     ]
   },
   "_utils.js": {
     "file": "chunks/utils.js",
     "name": "utils"
-  },
-  "_websocket.js": {
-    "file": "chunks/websocket.js",
-    "name": "websocket",
-    "imports": [
-      "_index.js"
-    ],
-    "dynamicImports": [
-      "src/lib/stores/timeframe.js"
-    ]
   },
   "node_modules/@sveltejs/kit/src/runtime/app/server/remote/index.js": {
     "file": "remote-entry.js",
@@ -148,11 +128,14 @@
     "isEntry": true,
     "imports": [
       "_ssr.js",
-      "_websocket.js",
+      "_index.js",
       "_broker.js"
     ],
+    "dynamicImports": [
+      "src/lib/stores/timeframe.js"
+    ],
     "css": [
-      "_app/immutable/assets/_layout.CEUJNiPL.css"
+      "_app/immutable/assets/app.DnVKJAVd.css"
     ]
   },
   "src/routes/+page.svelte": {
@@ -176,92 +159,16 @@
       "_api.js"
     ]
   },
-  "src/routes/live-trade/+layout.svelte": {
-    "file": "entries/pages/live-trade/_layout.svelte.js",
-    "name": "entries/pages/live-trade/_layout.svelte",
-    "src": "src/routes/live-trade/+layout.svelte",
+  "src/routes/live-trading-v2/+page.svelte": {
+    "file": "entries/pages/live-trading-v2/_page.svelte.js",
+    "name": "entries/pages/live-trading-v2/_page.svelte",
+    "src": "src/routes/live-trading-v2/+page.svelte",
     "isEntry": true,
     "imports": [
-      "_ssr.js",
-      "_stores.js"
+      "_ssr.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.CkTVCsFg.css"
-    ]
-  },
-  "src/routes/live-trade/+page.svelte": {
-    "file": "entries/pages/live-trade/_page.svelte.js",
-    "name": "entries/pages/live-trade/_page.svelte",
-    "src": "src/routes/live-trade/+page.svelte",
-    "isEntry": true,
-    "imports": [
-      "_ssr.js",
-      "_stores2.js"
-    ],
-    "css": [
-      "_app/immutable/assets/_page.DWUrZpp6.css"
-    ]
-  },
-  "src/routes/live-trade/analytics/+page.svelte": {
-    "file": "entries/pages/live-trade/analytics/_page.svelte.js",
-    "name": "entries/pages/live-trade/analytics/_page.svelte",
-    "src": "src/routes/live-trade/analytics/+page.svelte",
-    "isEntry": true,
-    "imports": [
-      "_ssr.js",
-      "_stores2.js"
-    ]
-  },
-  "src/routes/live-trade/orders/+page.svelte": {
-    "file": "entries/pages/live-trade/orders/_page.svelte.js",
-    "name": "entries/pages/live-trade/orders/_page.svelte",
-    "src": "src/routes/live-trade/orders/+page.svelte",
-    "isEntry": true,
-    "imports": [
-      "_ssr.js",
-      "_api.js"
-    ],
-    "css": [
-      "_app/immutable/assets/_page.CUdGwISx.css"
-    ]
-  },
-  "src/routes/live-trade/positions/+page.svelte": {
-    "file": "entries/pages/live-trade/positions/_page.svelte.js",
-    "name": "entries/pages/live-trade/positions/_page.svelte",
-    "src": "src/routes/live-trade/positions/+page.svelte",
-    "isEntry": true,
-    "imports": [
-      "_ssr.js",
-      "_api.js",
-      "_websocket.js"
-    ],
-    "css": [
-      "_app/immutable/assets/_page.Cd4Jhn_Y.css"
-    ]
-  },
-  "src/routes/live-trade/settings/+page.svelte": {
-    "file": "entries/pages/live-trade/settings/_page.svelte.js",
-    "name": "entries/pages/live-trade/settings/_page.svelte",
-    "src": "src/routes/live-trade/settings/+page.svelte",
-    "isEntry": true,
-    "imports": [
-      "_ssr.js",
-      "_exports.js",
-      "_utils.js",
-      "_state.svelte.js"
-    ],
-    "css": [
-      "_app/immutable/assets/_page.B_En64B5.css"
-    ]
-  },
-  "src/routes/live-trade/signals/+page.svelte": {
-    "file": "entries/pages/live-trade/signals/_page.svelte.js",
-    "name": "entries/pages/live-trade/signals/_page.svelte",
-    "src": "src/routes/live-trade/signals/+page.svelte",
-    "isEntry": true,
-    "imports": [
-      "_ssr.js",
-      "_stores2.js"
+      "_app/immutable/assets/_page.CbqwEogE.css"
     ]
   },
   "src/routes/paper-trading/+page.svelte": {
@@ -272,6 +179,28 @@
     "imports": [
       "_ssr.js",
       "_api.js"
+    ]
+  },
+  "src/routes/settings/+layout@.svelte": {
+    "file": "entries/pages/settings/_layout@.svelte.js",
+    "name": "entries/pages/settings/_layout@.svelte",
+    "src": "src/routes/settings/+layout@.svelte",
+    "isEntry": true,
+    "imports": [
+      "_ssr.js"
+    ],
+    "css": [
+      "_app/immutable/assets/app.DnVKJAVd.css"
+    ]
+  },
+  "src/routes/settings/+page.svelte": {
+    "file": "entries/pages/settings/_page.svelte.js",
+    "name": "entries/pages/settings/_page.svelte",
+    "src": "src/routes/settings/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_ssr.js",
+      "_stores.js"
     ]
   }
 }

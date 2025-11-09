@@ -8,11 +8,7 @@ export const nodes = [
 	() => import('./nodes/4'),
 	() => import('./nodes/5'),
 	() => import('./nodes/6'),
-	() => import('./nodes/7'),
-	() => import('./nodes/8'),
-	() => import('./nodes/9'),
-	() => import('./nodes/10'),
-	() => import('./nodes/11')
+	() => import('./nodes/7')
 ];
 
 export const server_loads = [];
@@ -20,13 +16,9 @@ export const server_loads = [];
 export const dictionary = {
 		"/": [3],
 		"/config": [4],
-		"/live-trade": [5,[2]],
-		"/live-trade/analytics": [6,[2]],
-		"/live-trade/orders": [7,[2]],
-		"/live-trade/positions": [8,[2]],
-		"/live-trade/settings": [9,[2]],
-		"/live-trade/signals": [10,[2]],
-		"/paper-trading": [11]
+		"/live-trading-v2": [5],
+		"/paper-trading": [6],
+		"/settings": [7,[2]]
 	};
 
 export const hooks = {
@@ -37,6 +29,7 @@ export const hooks = {
 };
 
 export const decoders = Object.fromEntries(Object.entries(hooks.transport).map(([k, v]) => [k, v.decode]));
+export const encoders = Object.fromEntries(Object.entries(hooks.transport).map(([k, v]) => [k, v.encode]));
 
 export const hash = false;
 

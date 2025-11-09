@@ -70,72 +70,22 @@ class BrokerAuthCallback(BaseModel):
 
 
 # Market Time Schemas
-class MarketHoursConfig(BaseModel):
-    """Market hours configuration response"""
-    id: int
-    start_time: str
-    end_time: str
-    webhook_start_time: str
-    order_placement_start_time: str
-    order_placement_end_time: str
-    square_off_time: str
-    trading_days: List[int]
-    webhook_url: Optional[str] = None
-    polling_interval_seconds: int
-    
-    class Config:
-        from_attributes = True
-
-
-class MarketHoursUpdate(BaseModel):
-    """Market hours configuration update request"""
-    start_time: Optional[str] = None
-    end_time: Optional[str] = None
-    webhook_start_time: Optional[str] = None
-    order_placement_start_time: Optional[str] = None
-    order_placement_end_time: Optional[str] = None
-    square_off_time: Optional[str] = None
-    trading_days: Optional[List[int]] = None
-    webhook_url: Optional[str] = None
-    polling_interval_seconds: Optional[int] = None
-
-
-class HolidayCreate(BaseModel):
-    """Holiday creation request"""
-    date: str  # YYYY-MM-DD
-    name: str
-    description: Optional[str] = None
-
-
 class HolidayResponse(BaseModel):
-    """Holiday response"""
-    id: int
+    """Holiday response from exchange calendar"""
     date: str
     name: str
     description: Optional[str] = None
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 
 class MarketStatusResponse(BaseModel):
     """Market status response"""
     is_open: bool
-    is_active: bool
     is_trading_day: bool
-    is_webhook_connection_time: bool
-    is_order_placement_time: bool
-    is_square_off_time: bool
     current_time: str
     current_day: str
-    market_open_time: str
-    market_close_time: str
-    webhook_start_time: str
-    order_placement_start_time: str
-    order_placement_end_time: str
-    square_off_time: str
-    trading_days: List[str]
+    market_open_time: Optional[str] = None
+    market_close_time: Optional[str] = None
+    exchange: str
     next_trading_day: Optional[str] = None
 
 

@@ -34,7 +34,7 @@ from backend.models import (
 )
 from backend.broker.base import TokenExpiredError
 from backend.services.unified_broker_middleware import UnifiedBrokerMiddleware
-from backend.services.market_time import is_market_open, get_market_status, is_webhook_connection_time
+from backend.services.market_calendar import is_market_open, get_market_status
 from backend.services.trading_logic_service import TradingLogicService
 
 logger = logging.getLogger(__name__)
@@ -182,15 +182,8 @@ class LiveTradingEngineV2:
             logger.error(f"Config validation failed: {e}")
             raise Exception(f"Cannot start live trading: {e}")
         
-        # Check if webhook connection time is active (9:00 AM onwards)
-        # Note: This is separate from market trading hours (9:15 AM onwards)
-        # Webhook connection starts 15 minutes earlier to be ready for market open
-        if not is_webhook_connection_time(self.db):
-            logger.warning("Webhook connection time not yet active (starts at 9:00 AM)")
-            # Allow starting engine for subscription setup, but log warning
-        
-        # Check market hours for actual trading - STRICT enforcement
-        market_status = get_market_status(self.db)
+        # Check market hours for trading - STRICT enforcement
+        market_status = get_market_status()
         if not market_status.get('is_open', False):
             reason = market_status.get('reason', 'Market is closed')
             logger.error(f"Cannot start live trading: {reason}")
@@ -298,7 +291,7 @@ class LiveTradingEngineV2:
     async def resume(self):
         """Resume live trading"""
         # Check market hours before resuming
-        market_status = get_market_status(self.db)
+        market_status = get_market_status()
         if not market_status.get('is_open', False):
             reason = market_status.get('reason', 'Market is closed')
             logger.error(f"Cannot resume live trading: {reason}")
@@ -780,7 +773,7 @@ class LiveTradingEngineV2:
         try:
             while self.running:
                 # Check market hours
-                if not is_market_open(self.db):
+                if not is_market_open():
                     logger.debug("Market closed - skipping position check")
                     await asyncio.sleep(60)
                     continue

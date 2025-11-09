@@ -14,7 +14,7 @@ from backend.models import TradingConfig, PaperTrade, PaperTradingAlert, PaperTr
 from backend.services.paper_trading_engine import PaperTradingEngine
 from backend.services.broker_data_service import get_broker_data_service
 from backend.api.webhook import set_paper_trading_engine
-from backend.services.market_time import get_market_status as get_mkt_status
+from backend.services.market_calendar import get_market_status as get_mkt_status
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +289,7 @@ async def get_market_status(db: Session = Depends(get_db)) -> Dict:
     Get current market status (open/closed, trading hours, holidays)
     """
     try:
-        status = get_mkt_status(db)
+        status = get_mkt_status()
         return {
             "status": "success",
             "data": status
