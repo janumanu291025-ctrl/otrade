@@ -530,31 +530,7 @@ class LiveTradingSignal(Base):
     config = relationship("TradingConfig", back_populates="live_signals")
 
 
-class HistoricalData(Base):
-    """
-    Cache for historical candle data used in simulations
-    """
-    __tablename__ = "historical_data"
-    __table_args__ = (
-        Index('idx_historical_symbol_timestamp', 'symbol', 'timestamp'),
-        Index('idx_historical_token_timestamp', 'instrument_token', 'timestamp'),
-    )
-    
-    id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String(50), nullable=False, index=True)
-    instrument_token = Column(String(50), nullable=False, index=True)
-    timestamp = Column(DateTime, nullable=False, index=True)
-    
-    # OHLCV data
-    open = Column(Float, nullable=False)
-    high = Column(Float, nullable=False)
-    low = Column(Float, nullable=False)
-    close = Column(Float, nullable=False)
-    ltp = Column(Float, nullable=False)
-    volume = Column(Integer, nullable=False, default=0)
-    
-    # Metadata
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
 
 
 

@@ -160,7 +160,7 @@ def migrate_all_tables():
         TradingConfig, BrokerConfig, Instrument,
         PaperTrade, PaperTradingMarketData, PaperTradingAlert,
         LiveTrade, LiveTradingMarketData, LiveTradingAlert, LiveTradingSignal,
-        HistoricalData, InstrumentDownloadLog, SchemaMigration, LiveTradingState
+        InstrumentDownloadLog, SchemaMigration, LiveTradingState
     )
     
     # List of all models to check
@@ -176,7 +176,6 @@ def migrate_all_tables():
         LiveTradingMarketData,
         LiveTradingAlert,
         LiveTradingSignal,
-        HistoricalData,
         InstrumentDownloadLog,
         SchemaMigration
     ]
@@ -218,15 +217,13 @@ def verify_database_schema():
     from backend.models import (
         TradingConfig, BrokerConfig, Instrument,
         PaperTrade, PaperTradingMarketData, PaperTradingAlert,
-        LiveTrade, LiveTradingMarketData, LiveTradingAlert, LiveTradingSignal,
-        HistoricalData
+        LiveTrade, LiveTradingMarketData, LiveTradingAlert, LiveTradingSignal
     )
     
     models = [
         TradingConfig, BrokerConfig, Instrument,
         PaperTrade, PaperTradingMarketData, PaperTradingAlert,
-        LiveTrade, LiveTradingMarketData, LiveTradingAlert, LiveTradingSignal,
-        HistoricalData
+        LiveTrade, LiveTradingMarketData, LiveTradingAlert, LiveTradingSignal
     ]
     
     issues_found = False

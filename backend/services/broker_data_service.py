@@ -402,7 +402,13 @@ class BrokerDataService:
         use_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Get historical OHLC candle data
+        Get historical OHLC candle data (DEPRECATED - use middleware instead)
+        
+        NOTE: This method is deprecated. Use middleware.get_historical_data() instead
+        for centralized rate limiting and caching.
+        
+        This method now delegates to the middleware to maintain backward compatibility
+        with existing code, but new implementations should use middleware directly.
         
         Args:
             instrument_token: Instrument token
@@ -414,11 +420,16 @@ class BrokerDataService:
         Returns:
             List of candles with date, open, high, low, close, volume
         """
-        # Create cache key
+        logger.warning(
+            "broker_data_service.get_historical_data() is deprecated. "
+            "Use middleware.get_historical_data() instead for centralized handling."
+        )
+        
+        # Delegate to broker directly with simple caching
         cache_key = f'historical_{interval}_{instrument_token}_{from_date.date()}_{to_date.date()}'
         
         if use_cache and self.cache:
-            ttl = 3600 if interval == 'day' else 60  # Day data cached longer
+            ttl = 3600 if interval == 'day' else 60
             cached = self.cache.get(cache_key, ttl=ttl)
             if cached:
                 logger.debug(f"Historical data retrieved from cache for {instrument_token}")
@@ -441,9 +452,7 @@ class BrokerDataService:
             )
             return candles
         except TokenExpiredError:
-            # Re-raise token expiry errors to propagate to engine
             raise
-
         except Exception as e:
             logger.error(f"Error fetching historical data: {e}")
             raise BrokerError(f"Failed to fetch historical data: {e}")

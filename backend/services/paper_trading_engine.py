@@ -907,23 +907,27 @@ class PaperTradingEngine:
             
             logger.info(f"Fetching NIFTY 50 historical data from {from_date.date()} to {to_date.date()}")
             
+            # Get middleware instance for centralized historical data access
+            from backend.services.middleware_helper import get_middleware_instance
+            middleware = get_middleware_instance(self.db)
+            
             # Fetch major timeframe
             major_interval = self._map_interval(self.config.major_trend_timeframe)
-            major_data = self.broker_data.get_historical_data(
-                "256265",  # NIFTY 50
-                from_date,
-                to_date,
-                major_interval,
+            major_data = middleware.get_historical_data(
+                instrument_token=256265,  # NIFTY 50
+                from_date=from_date,
+                to_date=to_date,
+                interval=major_interval,
                 use_cache=True
             )
             
             # Fetch minor timeframe  
             minor_interval = self._map_interval(self.config.minor_trend_timeframe)
-            minor_data = self.broker_data.get_historical_data(
-                "256265",
-                from_date,
-                to_date,
-                minor_interval,
+            minor_data = middleware.get_historical_data(
+                instrument_token=256265,
+                from_date=from_date,
+                to_date=to_date,
+                interval=minor_interval,
                 use_cache=True
             )
             
@@ -1235,8 +1239,12 @@ class PaperTradingEngine:
         Fetches historical data and replays it to simulate real-time trading
         """
         try:
-            # Initialize historical data service
-            self.historical_service = HistoricalDataService(self.broker_data.broker, self.db)
+            # Initialize historical data service with middleware
+            # Get middleware instance
+            from backend.services.middleware_helper import get_middleware_instance
+            middleware = get_middleware_instance(self.db)
+            
+            self.historical_service = HistoricalDataService(middleware)
             
             # Determine days_back based on selected_date
             days_back = 1  # Default to yesterday

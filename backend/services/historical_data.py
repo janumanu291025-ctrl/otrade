@@ -2,12 +2,11 @@
 Historical Data Service
 =======================
 
-Provides functions to fetch, cache, and replay historical market data
+Provides functions to fetch and replay historical market data
 for paper trading simulation during off-market hours.
 
 Features:
-- Fetch historical data from broker API (Kite Connect)
-- Cache data to database to avoid redundant API calls
+- Fetch historical data via broker middleware
 - Replay historical ticks at configurable intervals
 - Support for multiple symbols and timeframes
 """
@@ -16,9 +15,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Callable
 import asyncio
 import pytz
-from sqlalchemy.orm import Session
-
-from backend.broker.kite.client import KiteBroker
 
 logger = logging.getLogger(__name__)
 
@@ -29,18 +25,19 @@ IST = pytz.timezone('Asia/Kolkata')
 class HistoricalDataService:
     """
     Service for fetching and replaying historical market data
+    
+    Now uses the unified broker middleware for all historical data access,
+    ensuring centralized rate limiting, caching, and error handling.
     """
     
-    def __init__(self, broker: KiteBroker, db: Session):
+    def __init__(self, middleware):
         """
         Initialize historical data service
         
         Args:
-            broker: Broker client for fetching data
-            db: Database session for caching
+            middleware: Unified broker middleware instance (for historical data access)
         """
-        self.broker = broker
-        self.db = db
+        self.middleware = middleware
         self.replay_active = False
         self.replay_task = None
     
@@ -53,7 +50,12 @@ class HistoricalDataService:
         interval: str = "minute"
     ) -> List[Dict]:
         """
-        Fetch historical data from broker API
+        Fetch historical data from broker API via middleware
+        
+        Uses middleware which provides:
+        - Centralized rate limiting (3 req/sec)
+        - Redis caching
+        - Error handling
         
         Args:
             symbol: Trading symbol (e.g., "NIFTY 50")
@@ -68,12 +70,13 @@ class HistoricalDataService:
         try:
             logger.info(f"Fetching historical data for {symbol} from {start_date} to {end_date}")
             
-            # Fetch from broker API
-            data = self.broker.get_historical_data(
-                instrument_token=instrument_token,
+            # Fetch from middleware (which uses broker client)
+            data = self.middleware.get_historical_data(
+                instrument_token=int(instrument_token),
                 from_date=start_date,
                 to_date=end_date,
-                interval=interval
+                interval=interval,
+                use_cache=True
             )
             
             if not data:
@@ -89,123 +92,16 @@ class HistoricalDataService:
                     'high': float(candle['high']),
                     'low': float(candle['low']),
                     'close': float(candle['close']),
-                    'ltp': float(candle['close']),  # Use close as LTP
+                    'ltp': float(candle['close']),
                     'volume': int(candle.get('volume', 0))
                 })
             
             logger.info(f"Fetched {len(transformed_data)} candles for {symbol}")
-            
-            # Cache to database
-            self._cache_historical_data(symbol, instrument_token, transformed_data)
-            
             return transformed_data
         
         except Exception as e:
             logger.error(f"Error fetching historical data for {symbol}: {e}")
-            
-            # Try to load from cache
-            cached_data = self._load_from_cache(symbol, start_date, end_date)
-            if cached_data:
-                logger.info(f"Loaded {len(cached_data)} candles from cache for {symbol}")
-                return cached_data
-            
             raise
-    
-    def _cache_historical_data(
-        self,
-        symbol: str,
-        instrument_token: str,
-        data: List[Dict]
-    ):
-        """
-        Cache historical data to database
-        
-        Args:
-            symbol: Trading symbol
-            instrument_token: Instrument token
-            data: List of candles to cache
-        """
-        try:
-            from backend.models import HistoricalData
-            
-            # Delete existing data for this symbol and date range
-            if data:
-                start_date = data[0]['timestamp']
-                end_date = data[-1]['timestamp']
-                
-                self.db.query(HistoricalData).filter(
-                    HistoricalData.symbol == symbol,
-                    HistoricalData.timestamp >= start_date,
-                    HistoricalData.timestamp <= end_date
-                ).delete()
-            
-            # Insert new data
-            for candle in data:
-                hist_data = HistoricalData(
-                    symbol=symbol,
-                    instrument_token=instrument_token,
-                    timestamp=candle['timestamp'],
-                    open=candle['open'],
-                    high=candle['high'],
-                    low=candle['low'],
-                    close=candle['close'],
-                    ltp=candle['ltp'],
-                    volume=candle['volume']
-                )
-                self.db.add(hist_data)
-            
-            self.db.commit()
-            logger.info(f"Cached {len(data)} candles to database for {symbol}")
-        
-        except Exception as e:
-            logger.error(f"Error caching historical data: {e}")
-            self.db.rollback()
-    
-    def _load_from_cache(
-        self,
-        symbol: str,
-        start_date: datetime,
-        end_date: datetime
-    ) -> List[Dict]:
-        """
-        Load historical data from database cache
-        
-        Args:
-            symbol: Trading symbol
-            start_date: Start date
-            end_date: End date
-        
-        Returns:
-            List of cached candles
-        """
-        try:
-            from backend.models import HistoricalData
-            
-            cached_data = self.db.query(HistoricalData).filter(
-                HistoricalData.symbol == symbol,
-                HistoricalData.timestamp >= start_date,
-                HistoricalData.timestamp <= end_date
-            ).order_by(HistoricalData.timestamp).all()
-            
-            if not cached_data:
-                return []
-            
-            return [
-                {
-                    'timestamp': d.timestamp,
-                    'open': float(d.open),
-                    'high': float(d.high),
-                    'low': float(d.low),
-                    'close': float(d.close),
-                    'ltp': float(d.ltp),
-                    'volume': d.volume
-                }
-                for d in cached_data
-            ]
-        
-        except Exception as e:
-            logger.error(f"Error loading from cache: {e}")
-            return []
     
     async def replay_historical_data(
         self,

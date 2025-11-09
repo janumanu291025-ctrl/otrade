@@ -16,6 +16,8 @@ from sqlalchemy import desc
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import logging
+import pytz
+import pandas as pd
 
 from backend.database import get_db
 from backend.models import (
@@ -1891,29 +1893,57 @@ async def get_candles(
 
 @router.get("/chart-data")
 async def get_chart_data(
-    timeframe: str = "15minute",  # "minute" or "15minute"
-    limit: int = 100,
+    timeframe: str = "15minute",
+    limit: int = 5000,
     db: Session = Depends(get_db)
 ) -> Dict:
     """
     Get chart data formatted for frontend charts
     
-    Returns data in the format expected by CandlestickChart and AdvancedChart components:
+    Fetches historical OHLC data via the unified middleware which provides:
+    - Centralized rate limiting (3 req/sec)
+    - Redis caching for performance
+    - Automatic error handling and retries
+    
+    Data ranges by timeframe:
+    - minute: Last 30 days (~15,000+ candles)
+    - 3-30minute: Last 200 days (~5,000+ candles, Kite API limit)
+    - 60minute: Last 200 days (~2,500+ candles, Kite API limit)
+    - day: Last 5 years (~1,250+ candles)
+    
+    Returns data formatted for chart components:
     - candles: Array of OHLC data with timestamps
     - ma7: Moving average 7 data points
     - ma20: Moving average 20 data points  
-    - bb_upper: Bollinger Band upper
-    - bb_lower: Bollinger Band lower
+    - bb_upper: Bollinger Band upper band
+    - bb_lower: Bollinger Band lower band
+    
+    Args:
+        timeframe: Candle interval ('minute', '3minute', '5minute', '15minute', 
+                  '30minute', '60minute', 'day')
+        limit: Maximum number of candles to return (default: 5000, fetches all available data)
+    
+    Returns:
+        Dict with candles and indicator data formatted for frontend
     """
     from backend.models import BrokerConfig
     from backend.services.trading_logic_service import TradingLogicService
     from collections import deque
     
+    # Validate timeframe parameter BEFORE try block so validation errors return 400, not 500
+    valid_timeframes = ['minute', '3minute', '5minute', '10minute', '15minute', 
+                       '30minute', '60minute', 'day']
+    if timeframe not in valid_timeframes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid timeframe '{timeframe}'. Valid options: {', '.join(valid_timeframes)}"
+        )
+    
     try:
-        # Get middleware instance
+        # Get middleware instance (centralized broker data access)
         middleware = get_middleware_instance(db)
         
-        # Get broker config to validate authentication
+        # Validate broker authentication
         broker_config = db.query(BrokerConfig).filter(
             BrokerConfig.broker_type == "kite",
             BrokerConfig.is_active == True
@@ -1928,35 +1958,45 @@ async def get_chart_data(
         # NIFTY 50 token
         nifty_token = 256265
         
-        # Calculate time range
-        now = datetime.now()
+        # Calculate time range based on current time in IST
+        IST = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(IST)
         
-        # Go back to last trading day if it's weekend
+        # Adjust for weekends
         while now.weekday() > 4:  # Saturday=5, Sunday=6
             now -= timedelta(days=1)
         
-        # If it's before market open, go back to previous day
+        # Adjust for before market open
         if now.hour < 9 or (now.hour == 9 and now.minute < 15):
             now -= timedelta(days=1)
             while now.weekday() > 4:
                 now -= timedelta(days=1)
         
-        # Calculate time range based on interval
+        # Set time range based on timeframe
         if timeframe == "minute":
-            # For 1-minute candles, fetch last trading day's data
-            end_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
-            start_time = now.replace(hour=9, minute=15, second=0, microsecond=0)
-        else:  # 15minute and other timeframes
-            # For other timeframes, fetch appropriate range
+            # For 1-minute candles, fetch last 30 days
             end_time = now
-            start_time = end_time - timedelta(days=2)
+            start_time = end_time - timedelta(days=30)
+        elif timeframe in ["3minute", "5minute", "10minute", "15minute", "30minute"]:
+            # For intraday intervals, fetch last 200 days (Kite API limit)
+            end_time = now
+            start_time = end_time - timedelta(days=200)
+        elif timeframe == "60minute":
+            # For hourly, fetch last 200 days (Kite API limit)
+            end_time = now
+            start_time = end_time - timedelta(days=200)
+        else:  # "day"
+            # For daily, fetch last 5 years
+            end_time = now
+            start_time = end_time - timedelta(days=1825)
         
-        # Fetch historical data via middleware
+        # Fetch historical data via middleware (centralized rate limiting, caching, error handling)
         candles = middleware.get_historical_data(
             instrument_token=nifty_token,
             from_date=start_time,
             to_date=end_time,
-            interval=timeframe
+            interval=timeframe,
+            use_cache=True
         )
         
         if not candles:
@@ -1968,10 +2008,10 @@ async def get_chart_data(
                 "bb_lower": []
             }
         
-        # Limit the number of candles returned
+        # Limit candles to requested amount
         candles = candles[-limit:] if len(candles) > limit else candles
         
-        # Normalize candle structure
+        # Normalize candle structure for frontend
         normalized_candles = []
         for candle in candles:
             normalized_candles.append({
@@ -1980,10 +2020,9 @@ async def get_chart_data(
                 "high": candle.get("high"),
                 "low": candle.get("low"),
                 "close": candle.get("close"),
-                "volume": candle.get("volume", 0)
             })
         
-        # Calculate indicators
+        # Calculate technical indicators using efficient pandas calculation
         trading_logic = TradingLogicService()
         ma7_data = []
         ma20_data = []
@@ -1991,37 +2030,42 @@ async def get_chart_data(
         bb_lower_data = []
         
         if len(normalized_candles) >= 20:
-            # Calculate indicators for each candle position
-            for i in range(20, len(normalized_candles) + 1):
-                candle_subset = deque(normalized_candles[:i])
-                ind = trading_logic.calculate_indicators_from_deque(candle_subset)
-                if ind:
-                    timestamp = normalized_candles[i-1].get("date")
-                    if ind.get("ma7") is not None:
-                        ma7_data.append({
-                            "timestamp": timestamp,
-                            "value": round(ind.get("ma7"), 2)
-                        })
-                    if ind.get("ma20") is not None:
-                        ma20_data.append({
-                            "timestamp": timestamp,
-                            "value": round(ind.get("ma20"), 2)
-                        })
-                    if ind.get("ubb") is not None:
-                        bb_upper_data.append({
-                            "timestamp": timestamp,
-                            "value": round(ind.get("ubb"), 2)
-                        })
-                    if ind.get("lbb") is not None:
-                        bb_lower_data.append({
-                            "timestamp": timestamp,
-                            "value": round(ind.get("lbb"), 2)
-                        })
+            # Convert to DataFrame for efficient calculation
+            df = pd.DataFrame(normalized_candles)
+            
+            # Calculate all indicators at once using optimized pandas operations
+            df_with_indicators = trading_logic.calculate_indicators_from_df(df)
+            
+            # Extract indicator values for each valid position
+            for idx in range(19, len(df_with_indicators)):  # Start from index 19 (20th candle, 0-indexed)
+                row = df_with_indicators.iloc[idx]
+                timestamp = row.get("timestamp")
+                
+                if pd.notna(row.get("ma7")):
+                    ma7_data.append({
+                        "timestamp": timestamp,
+                        "value": round(row.get("ma7"), 2)
+                    })
+                if pd.notna(row.get("ma20")):
+                    ma20_data.append({
+                        "timestamp": timestamp,
+                        "value": round(row.get("ma20"), 2)
+                    })
+                if pd.notna(row.get("bb_upper")):
+                    bb_upper_data.append({
+                        "timestamp": timestamp,
+                        "value": round(row.get("bb_upper"), 2)
+                    })
+                if pd.notna(row.get("bb_lower")):
+                    bb_lower_data.append({
+                        "timestamp": timestamp,
+                        "value": round(row.get("bb_lower"), 2)
+                    })
         
         # Format candles for response (convert datetime to timestamp)
         formatted_candles = []
         for candle in normalized_candles:
-            date_obj = candle.get("date")
+            date_obj = candle.get("timestamp")
             if isinstance(date_obj, datetime):
                 timestamp = int(date_obj.timestamp() * 1000)  # Convert to milliseconds
             else:
@@ -2029,21 +2073,24 @@ async def get_chart_data(
             
             formatted_candles.append({
                 "timestamp": timestamp,
-                "open": round(candle.get("open"), 2),
-                "high": round(candle.get("high"), 2),
-                "low": round(candle.get("low"), 2),
-                "close": round(candle.get("close"), 2)
+                "open": round(candle.get("open"), 2) if candle.get("open") else 0,
+                "high": round(candle.get("high"), 2) if candle.get("high") else 0,
+                "low": round(candle.get("low"), 2) if candle.get("low") else 0,
+                "close": round(candle.get("close"), 2) if candle.get("close") else 0,
             })
         
         # Format indicator data
         def format_indicator_data(data_list):
-            return [
-                {
-                    "timestamp": int(item["timestamp"].timestamp() * 1000) if isinstance(item["timestamp"], datetime) else item["timestamp"],
-                    "value": item["value"]
-                }
-                for item in data_list
-            ]
+            formatted = []
+            for item in data_list:
+                ts = item.get("timestamp")
+                if isinstance(ts, datetime):
+                    ts = int(ts.timestamp() * 1000)
+                formatted.append({
+                    "timestamp": ts,
+                    "value": item.get("value", 0)
+                })
+            return formatted
         
         return {
             "candles": formatted_candles,

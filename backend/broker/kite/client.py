@@ -331,6 +331,13 @@ class KiteBroker(BaseBroker):
             List of candles: [{date, open, high, low, close, volume, oi}, ...]
         """
         try:
+            # Convert timezone-aware datetime to naive datetime (Kite API requirement)
+            # If datetime is timezone-aware, strip the timezone info
+            if from_date.tzinfo is not None:
+                from_date = from_date.replace(tzinfo=None)
+            if to_date.tzinfo is not None:
+                to_date = to_date.replace(tzinfo=None)
+            
             data = self.kite.historical_data(
                 instrument_token=int(instrument_token),
                 from_date=from_date,

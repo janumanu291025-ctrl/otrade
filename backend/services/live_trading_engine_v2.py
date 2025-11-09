@@ -711,18 +711,18 @@ class LiveTradingEngineV2:
             
             # Fetch major timeframe data
             major_days = self._get_days_for_candles(self.config.major_timeframe, 100)
-            from_date = (datetime.now(IST) - timedelta(days=major_days)).strftime('%Y-%m-%d')
-            to_date = datetime.now(IST).strftime('%Y-%m-%d')
+            from_date = datetime.now(IST) - timedelta(days=major_days)
+            to_date = datetime.now(IST)
             
-            logger.info(f"Fetching NIFTY 50 data from {from_date} to {to_date} ({self.config.major_timeframe})")
+            logger.info(f"Fetching NIFTY 50 data from {from_date.date()} to {to_date.date()} ({self.config.major_timeframe})")
             
-            # Use middleware to get historical data
-            from datetime import datetime as dt
+            # Use middleware to get historical data (centralized rate limiting and caching)
             major_data_raw = self.middleware.get_historical_data(
-                instrument_token="256265",  # NIFTY 50
-                from_date=dt.strptime(from_date, '%Y-%m-%d'),
-                to_date=dt.strptime(to_date, '%Y-%m-%d'),
-                interval=self.config.major_timeframe
+                instrument_token=256265,  # NIFTY 50
+                from_date=from_date,
+                to_date=to_date,
+                interval=self.config.major_timeframe,
+                use_cache=True
             )
             
             if major_data_raw:
@@ -731,16 +731,17 @@ class LiveTradingEngineV2:
             
             # Fetch minor timeframe data
             minor_days = self._get_days_for_candles(self.config.minor_timeframe, 500)
-            from_date = (datetime.now(IST) - timedelta(days=minor_days)).strftime('%Y-%m-%d')
+            from_date = datetime.now(IST) - timedelta(days=minor_days)
             
-            logger.info(f"Fetching NIFTY 50 data from {from_date} to {to_date} ({self.config.minor_timeframe})")
+            logger.info(f"Fetching NIFTY 50 data from {from_date.date()} to {to_date.date()} ({self.config.minor_timeframe})")
             
-            # Use middleware to get historical data
+            # Use middleware to get historical data (centralized rate limiting and caching)
             minor_data_raw = self.middleware.get_historical_data(
-                instrument_token="256265",
-                from_date=dt.strptime(from_date, '%Y-%m-%d'),
-                to_date=dt.strptime(to_date, '%Y-%m-%d'),
-                interval=self.config.minor_timeframe
+                instrument_token=256265,
+                from_date=from_date,
+                to_date=to_date,
+                interval=self.config.minor_timeframe,
+                use_cache=True
             )
             
             if minor_data_raw:

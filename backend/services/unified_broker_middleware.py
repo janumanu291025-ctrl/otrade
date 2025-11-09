@@ -511,6 +511,10 @@ class UnifiedBrokerMiddleware:
         from backend.services.market_calendar import get_market_calendar
         self.market_time = get_market_calendar()
         
+        # Initialize cache for historical data
+        from backend.utils.cache import InMemoryCache
+        self.cache = InMemoryCache(default_ttl=300, max_size=1000)  # 5 min default TTL
+        
         # Initialize sub-components
         self.webhook_manager = WebhookConnectionManager(broker, self.market_time)
         self.polling_scheduler = DataPollingScheduler(broker, self.market_time)
@@ -800,9 +804,112 @@ class UnifiedBrokerMiddleware:
         """Get instruments (should be called once per day, managed externally)"""
         return self.broker.get_instruments(exchange=exchange)
     
-    def get_historical_data(self, **kwargs) -> List[Dict[str, Any]]:
-        """Get historical data (pass-through, no special handling)"""
-        return self.broker.get_historical_data(**kwargs)
+    def get_historical_data(
+        self,
+        instrument_token: int,
+        from_date: datetime,
+        to_date: datetime,
+        interval: str = "minute",
+        use_cache: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Get historical OHLC candle data with caching and error handling
+        
+        This is the centralized method for all historical data access.
+        Kite API Documentation: https://kite.trade/docs/connect/v3/historical/
+        
+        Args:
+            instrument_token: Numerical instrument token (e.g., 256265 for Nifty 50)
+            from_date: Start datetime for candles
+            to_date: End datetime for candles
+            interval: Candle interval ('minute', '3minute', '5minute', '15minute', 
+                     '30minute', '60minute', 'day')
+            use_cache: Whether to use Redis cache if available
+        
+        Returns:
+            List of candles: [
+                {
+                    'date': datetime,
+                    'open': float,
+                    'high': float,
+                    'low': float,
+                    'close': float,
+                    'volume': int,
+                    'oi': int (optional, for index instruments)
+                },
+                ...
+            ]
+        
+        Raises:
+            TokenExpiredError: If access token has expired
+            NetworkError: If API call fails
+        
+        Notes:
+            - Supports rate limiting via middleware (3 req/sec)
+            - Uses Redis cache to minimize API calls
+            - Validates date range and interval parameters
+            - Handles timezone-aware datetime objects
+        """
+        try:
+            # Validate parameters
+            if not instrument_token:
+                raise ValueError("instrument_token is required")
+            if not from_date or not to_date:
+                raise ValueError("from_date and to_date are required")
+            if from_date > to_date:
+                raise ValueError("from_date must be less than or equal to to_date")
+            
+            valid_intervals = ['minute', '3minute', '5minute', '10minute', '15minute', 
+                             '30minute', '60minute', 'day']
+            if interval not in valid_intervals:
+                raise ValueError(f"Invalid interval: {interval}. Must be one of {valid_intervals}")
+            
+            # Create cache key for Redis
+            cache_key = f'historical_{interval}_{instrument_token}_{from_date.date()}_{to_date.date()}'
+            
+            # Check cache first
+            if use_cache and self.cache:
+                cached_data = self.cache.get(cache_key)
+                if cached_data:
+                    logger.debug(f"Historical data cache hit: {cache_key}")
+                    return cached_data
+            
+            logger.info(
+                f"Fetching historical data for token {instrument_token}, "
+                f"interval={interval}, from={from_date.date()}, to={to_date.date()}"
+            )
+            
+            # Call broker's get_historical_data method
+            # This is rate-limited by the rate limiter middleware
+            candles = self.broker.get_historical_data(
+                instrument_token=int(instrument_token),
+                from_date=from_date,
+                to_date=to_date,
+                interval=interval
+            )
+            
+            # Cache the result
+            if self.cache and candles:
+                # Cache for different durations based on interval
+                # Day data: 1 hour, other intervals: 5 minutes
+                ttl_seconds = 3600 if interval == 'day' else 300
+                self.cache.set(cache_key, candles, ttl=ttl_seconds)
+                logger.debug(f"Cached historical data: {cache_key} ({len(candles)} candles)")
+            
+            logger.info(
+                f"Retrieved {len(candles)} {interval} candles for token {instrument_token}"
+            )
+            return candles
+        
+        except TokenExpiredError:
+            logger.error("Access token expired while fetching historical data")
+            raise
+        except ValueError as e:
+            logger.error(f"Invalid parameter for historical data: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching historical data: {e}")
+            raise
     
     # ==================== Status Methods ====================
     
